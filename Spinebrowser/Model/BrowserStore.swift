@@ -19,13 +19,16 @@ final class BrowserStore {
     var isCommandBarOpen = false
     var isSidebarOverlayOpen = false
     var isArchiveOpen = false
-    /// The URL pill recedes while you read down a page and comes back on summon.
-    private(set) var isAddressHidden = false
+    /// The URL pill recedes while you read down a page, or when left alone, and comes back on summon.
+    private(set) var isAddressHidden = false {
+        didSet { isAddressHidden ? addressFade?.cancel() : scheduleAddressFade() }
+    }
 
     @ObservationIgnored private var lastTabBySpace: [UUID: UUID] = [:]
     @ObservationIgnored private var lastStrip: SpineState = .spines
     @ObservationIgnored private var spineBeforePair: SpineState?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var addressFade: Task<Void, Never>?
     @ObservationIgnored private(set) lazy var engine = WebEngine(store: self)
     let favicons = FaviconStore()
 
@@ -36,6 +39,7 @@ final class BrowserStore {
             seed()
         }
         sweepArchive()
+        scheduleAddressFade()
     }
 
     // MARK: Lookups
@@ -208,6 +212,20 @@ final class BrowserStore {
 
     func showAddress() {
         isAddressHidden = false
+    }
+
+    /// Left alone, the pill steps aside. It waits out a loading page or an open command bar.
+    private func scheduleAddressFade() {
+        addressFade?.cancel()
+        addressFade = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, let self else { return }
+            if isCommandBarOpen || focusedRuntime.isLoading || isPair {
+                scheduleAddressFade()
+            } else {
+                isAddressHidden = true
+            }
+        }
     }
 
     // MARK: The Spine
