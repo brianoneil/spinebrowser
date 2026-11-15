@@ -84,7 +84,7 @@ The Arc/Zen model, adapted:
 | **Today** | Ephemeral; **auto-archive after 12 hours** (configurable: 6h/12h/24h/off) | Sidebar list, most recent first |
 
 - Archived tabs recoverable from an Archive view (grouped by day, searchable).
-- Tab unload: tabs inactive >30 min unload from memory (Zen-style); reload on activation. Pinned tabs lazy-load after app restart.
+- Tab unload: tabs inactive >30 min unload from memory (Zen-style); reload on activation. Pinned tabs lazy-load after app restart. On by default; Settings can turn it off (§4.11).
 - Long-press a Today tab → Pin, Move to Essentials, Close, Move to Space.
 
 ### 4.3 The Spine (P0) — tabs on the left edge
@@ -124,6 +124,7 @@ Arc's Cmd-T, reimagined for touch:
 - Floating, centered panel (Zen floating-URL-bar style), summoned by: tap on the collapsed URL pill, swipe-down on a pane's top edge, or hardware keyboard Cmd-L.
 - Single field for: URL entry, web search (configurable engine), open-tab search/switching, archive search, and **commands** ("pin tab", "move to space", "split", "archive all today tabs").
 - Fuzzy matching across tabs/history; shows which pane a result will open in (defaults to active pane).
+- **Ranking.** Open tabs lead, so you switch instead of duplicating. A command whose name contains what you typed as one run ("set" → Settings) outranks tabs that only match letter by letter, and it outranks the web-search fallback. Return runs the top result.
 
 ### 4.6 Glance (P1)
 
@@ -140,7 +141,8 @@ Zen's Glance, touch-native:
 
 ### 4.8 Privacy & blocking (P0)
 
-- Built-in tracker/ad blocking (WebKit content-blocker ruleset, ship a maintained list).
+- Built-in tracker/ad blocking (WebKit content-blocker ruleset, ship a maintained list). On by default; Settings can turn it off, and pages on screen reload so the change shows at once.
+- Clear browsing data from Settings: cookies, site data, caches, favicons and the archive. Open tabs stay and reload fresh, so no signed-in page lingers.
 - Auto-deny cookie-consent banners where possible (Arc Search behavior).
 - Per-space history; archive excluded from history suggestions by default.
 - No accounts, no telemetry in MVP. Local-only state. (Sync is §10.)
@@ -155,8 +157,28 @@ Zen's Glance, touch-native:
 ### 4.10 Theming & craft (P1)
 
 - Per-space accent color + gradient; chrome tints to match (Arc/Zen).
-- Light/dark/auto; true-black dark mode.
+- Theme: Match system (default), Day or Night. **True black at night** drops the night desk to #000 for OLED; pages and the Spine keep their tone. A reader-only OLED option arrives with Reader mode (§4.7).
 - Motion: spring animations on sidebar reveal, space switch, glance open. Delight budget: one signature animation (Arc's dancing-thumbnail equivalent) — candidate: tabs "shelving" themselves into the archive.
+
+### 4.11 Settings (P0)
+
+The habits you set once. Settings take the inner display: the Spine and the page step aside, and the system column keeps one control, Back, in the same spot as the browser's Back. Open it from the command bar (type "set", or pick **Settings**).
+
+**Layout.** On the open display the sheet is a two-page spread whose gutter is the crease. Each column is measured from the `.division` reserved region (left column ends 38pt before it, right column starts 26pt after it), so the spread holds unchanged when the Duo bends into a book. Left page: title, Tabs, Privacy. Right page: Appearance, About and a colophon. Where there's no room for a spread (the cover, open upright) the same sections stack in one scrolling column. Settings stay open through fold and unfold.
+
+| Section | Control | Default | What it does |
+|---|---|---|---|
+| Tabs | **Archive Today tabs after** 6h · 12h · 24h · Never | 12h | Sets the auto-archive timer (§4.2). A shorter time shelves anything already past it straight away. A copper line under it counts down to the next shelving; Never says Today tabs stay until you close them. |
+| Tabs | **Unload idle tabs** | On | Off keeps every tab's web view in memory. |
+| Appearance | **Theme** Match system · Day · Night | Match system | Day and Night override the system appearance for the whole app, web content included. |
+| Appearance | **True black at night** | Off | At night the desk goes #000. Disabled while the theme is Day. |
+| Privacy | **Block trackers and ads** | On | Adds or removes the bundled rule list on every web view and reloads the pages on screen. The footnote quotes how many domains the list blocks, counted from the bundled file. |
+| Privacy | **Clear browsing data…** | — | Madder, behind a confirmation. Clears what §4.8 lists, then says so in place: "Cleared. Sites will ask you to sign in again." |
+| About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone, with no accounts and no telemetry. |
+
+- Settings persist with the rest of local state. Every setting decodes with a default, so a setting added later never wipes saved tabs.
+- Toggles switch on the switch itself, as in iOS Settings. Each segment and swatch is its own accessibility element with a selected trait.
+- Design: Paper page **Settings** (day, night, command-bar entry).
 
 ### Explicitly out of MVP
 
@@ -243,6 +265,7 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 
 - **Design Language:** Principles · 01 Color (the reading room, Bindings) · 01b Light & dark · 02 Typography · 03 Space & motion · 04 Device & system UI · 05 The Spine (all four states).
 - **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright.
+- **Settings:** 00 cover · 01 Settings, day, open flat · 02 Settings, night, open flat · 03 Open from the command bar.
 - **Modes v1:** superseded. It used a two-screen model and a standard iPhone status bar.
 
 ## 7. Technical architecture
@@ -253,7 +276,7 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 - **State restoration:** persist per-pane navigation state, scroll offsets, reader state; restore across launch and geometry change.
 - **Scenes:** `UISceneSession` multi-scene support; one-window-spanned vs two-window modes behind an abstraction layer.
 - **Seam geometry:** if/when Apple exposes viewport-segment APIs in WebKit, adopt; until then compute hinge zone from display geometry and keep a safe inset (never place interactive UI within it). Optionally inject segment info into pages via `WKUserScript` + CSS env polyfill.
-- **Content blocking:** `WKContentRuleList` compiled at launch from a bundled list; blocked-count surfaced in tab controls.
+- **Content blocking:** `WKContentRuleList` compiled at launch from a bundled list and toggled per user setting across every live web view. A per-page blocked count needs WebKit to report blocked loads; public API doesn't, so Settings quotes the list's size instead.
 - **Memory budget:** target ≤2 loaded webviews per space beyond the two visible panes; Zen-style auto-unload at 30 min idle.
 
 ---

@@ -11,6 +11,7 @@ final class WebEngine: NSObject {
     /// Navigation state for tabs unloaded to save memory; restored on activation.
     private var parked: [UUID: Any] = [:]
     private let configuration = WKWebViewConfiguration()
+    private var blocker: ContentBlocker?
     /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
     private var panAnchor: CGFloat = 0
 
@@ -20,7 +21,30 @@ final class WebEngine: NSObject {
         // One shared cookie jar in MVP. Per-space data stores arrive with Profiles.
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        ContentBlocker.install(into: configuration.userContentController)
+        blocker = ContentBlocker(controller: configuration.userContentController, enabled: store.settings.blocksTrackers)
+    }
+
+    /// Turns the bundled rule list on or off for every web view, then reloads the given tabs.
+    func setContentBlocking(_ enabled: Bool, reloading tabIDs: [UUID]) {
+        blocker?.setEnabled(enabled, in: views.values.map(\.configuration.userContentController))
+        tabIDs.forEach(reload)
+    }
+
+    /// Cookies, local storage, caches: everything the shared data store holds, plus the
+    /// app-wide URL cache and cookies the favicon fetches use.
+    func removeWebsiteData() async {
+        await configuration.websiteDataStore.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        )
+        URLCache.shared.removeAllCachedResponses()
+        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+    }
+
+    /// Throws away every web view and parked history. Tabs reload at their address when shown.
+    func discardAll() {
+        for tabID in Array(views.keys) { release(tabID) }
+        parked.removeAll()
     }
 
     func webView(for tabID: UUID) -> WKWebView? {
@@ -190,19 +214,48 @@ extension WebEngine: WKUIDelegate {
     }
 }
 
-/// Built-in tracker and ad blocking from a bundled WebKit content-rule list.
-enum ContentBlocker {
-    static func install(into controller: WKUserContentController) {
-        guard
-            let url = Bundle.main.url(forResource: "blocklist", withExtension: "json"),
-            let rules = try? String(contentsOf: url, encoding: .utf8)
-        else { return }
+/// Built-in tracker and ad blocking from a bundled WebKit content-rule list, on by default.
+@MainActor
+final class ContentBlocker {
+    private let controller: WKUserContentController
+    private var list: WKContentRuleList?
+    private var isEnabled: Bool
+
+    private static let source: String? = Bundle.main.url(forResource: "blocklist", withExtension: "json")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+
+    /// How many hosts the list blocks outright. Settings quotes it, so it's counted, not hard-coded.
+    static let blockedHostCount: Int = {
+        guard let data = source?.data(using: .utf8),
+              let rules = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return 0 }
+        return rules.filter { ($0["action"] as? [String: Any])?["type"] as? String == "block" }.count
+    }()
+
+    init(controller: WKUserContentController, enabled: Bool) {
+        self.controller = controller
+        self.isEnabled = enabled
+        guard let source = Self.source else { return }
         WKContentRuleListStore.default().compileContentRuleList(
             forIdentifier: "spinebrowser-blocklist-1",
-            encodedContentRuleList: rules
-        ) { list, _ in
+            encodedContentRuleList: source
+        ) { [weak self] list, _ in
             guard let list else { return }
-            Task { @MainActor in controller.add(list) }
+            Task { @MainActor in
+                guard let self else { return }
+                self.list = list
+                if self.isEnabled { self.controller.add(list) }
+            }
+        }
+    }
+
+    /// Live web views copy their configuration, so each one's controller is updated too.
+    func setEnabled(_ enabled: Bool, in controllers: [WKUserContentController]) {
+        isEnabled = enabled
+        guard let list else { return }
+        var seen = Set<ObjectIdentifier>()
+        for controller in [controller] + controllers where seen.insert(ObjectIdentifier(controller)).inserted {
+            controller.remove(list)
+            if enabled { controller.add(list) }
         }
     }
 }

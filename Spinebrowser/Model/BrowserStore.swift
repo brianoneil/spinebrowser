@@ -14,11 +14,15 @@ final class BrowserStore {
     private(set) var spineState: SpineState = .sidebar
     /// Nil turns auto-archive off.
     private(set) var archiveAfterHours: Double? = 12
+    private(set) var settings = BrowserSettings()
 
     var runtime: [UUID: TabRuntime] = [:]
     var isCommandBarOpen = false
     var isSidebarOverlayOpen = false
     var isArchiveOpen = false
+    var isSettingsOpen = false
+    /// Bumps when every web view is thrown away, so the hosts on screen build fresh ones.
+    private(set) var webGeneration = 0
     /// The URL pill recedes while you read down a page, or when left alone, and comes back on summon.
     private(set) var isAddressHidden = false {
         didSet { isAddressHidden ? addressFade?.cancel() : scheduleAddressFade() }
@@ -340,6 +344,11 @@ final class BrowserStore {
             .min()
     }
 
+    /// When the next unpinned tab archives, in any space.
+    var nextArchiveDate: Date? {
+        spaces.compactMap { nextArchiveDate(in: $0.id) }.min()
+    }
+
     func archiveDate(for tab: BrowserTab) -> Date? {
         guard tab.tier == .today, let interval = archiveInterval, paneIndex(showing: tab.id) == nil else { return nil }
         return tab.lastActiveAt.addingTimeInterval(interval)
@@ -386,9 +395,37 @@ final class BrowserStore {
 
     /// Zen-style unload: tabs idle past 30 minutes give their memory back and reload on activation.
     func unloadIdleTabs(now: Date = .now) {
+        guard settings.unloadsIdleTabs else { return }
         let shown = Set(panes.compactMap(\.tabID))
         let idle = tabs.filter { !shown.contains($0.id) && now.timeIntervalSince($0.lastActiveAt) > 30 * 60 }
         idle.forEach { engine.park($0.id) }
+    }
+
+    // MARK: Settings
+
+    func updateSettings(_ change: (inout BrowserSettings) -> Void) {
+        var next = settings
+        change(&next)
+        guard next != settings else { return }
+        let blockingChanged = next.blocksTrackers != settings.blocksTrackers
+        settings = next
+        if blockingChanged {
+            // Pages on screen reload so the change shows at once; the rest pick it up on their next load.
+            engine.setContentBlocking(next.blocksTrackers, reloading: panes.compactMap(\.tabID))
+        }
+        scheduleSave()
+    }
+
+    /// Cookies, site data, caches and the archive go. Open tabs stay and reload fresh, so no
+    /// signed-in page lingers and their back history starts over.
+    func clearBrowsingData() async {
+        await engine.removeWebsiteData()
+        engine.discardAll()
+        runtime.removeAll()
+        archive.removeAll()
+        favicons.clear()
+        webGeneration += 1
+        saveNow()
     }
 
     // MARK: Web callbacks
@@ -431,7 +468,8 @@ final class BrowserStore {
         Snapshot(
             spaces: spaces, tabs: tabs, archive: archive, panes: panes,
             focusedPaneIndex: focusedPaneIndex, spineState: spineState,
-            archiveAfterHours: archiveAfterHours, lastTabBySpace: lastTabBySpace
+            archiveAfterHours: archiveAfterHours, lastTabBySpace: lastTabBySpace,
+            settings: settings
         )
     }
 
@@ -444,6 +482,7 @@ final class BrowserStore {
         spineState = snapshot.spineState
         archiveAfterHours = snapshot.archiveAfterHours
         lastTabBySpace = snapshot.lastTabBySpace
+        settings = snapshot.settings ?? BrowserSettings()
         if spaces.isEmpty || panes.isEmpty { seed() }
     }
 
@@ -493,6 +532,8 @@ struct Snapshot: Codable {
     var spineState: SpineState
     var archiveAfterHours: Double?
     var lastTabBySpace: [UUID: UUID]
+    /// Optional so state saved before Settings existed still loads.
+    var settings: BrowserSettings?
 }
 
 /// Local-only state: one JSON file in Application Support. No accounts, no telemetry.

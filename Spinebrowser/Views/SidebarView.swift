@@ -224,7 +224,7 @@ struct ArchiveCountdown: View {
         return h > 0 ? String(format: "%dh %02dm", h, m) : "\(m)m"
     }
 
-    private static func spoken(_ seconds: TimeInterval) -> String {
+    static func spoken(_ seconds: TimeInterval) -> String {
         let minutes = Int(seconds / 60)
         return minutes >= 60 ? "\(minutes / 60) hours \(minutes % 60) minutes" : "\(minutes) minutes"
     }

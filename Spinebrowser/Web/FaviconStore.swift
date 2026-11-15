@@ -35,6 +35,13 @@ final class FaviconStore {
         return nil
     }
 
+    /// Forgets every icon, on disk too. Sites hand theirs back on the next visit.
+    func clear() {
+        images.removeAll()
+        missing.removeAll()
+        if let directory = Self.directory { try? FileManager.default.removeItem(at: directory) }
+    }
+
     func fetch(hosts: [String], candidates: [URL]) {
         let keys = Array(Set(hosts.map(Self.key)))
         guard let primary = keys.first, !inFlight.contains(primary) else { return }

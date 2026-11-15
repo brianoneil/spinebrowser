@@ -16,12 +16,14 @@ extension Color {
 /// Values come from the Paper file's tokens; day and night are both first-class.
 struct Palette: Equatable {
     var isDark = false
+    /// The OLED option: at night the desk drops to true black.
+    var trueBlack = false
 
     private func pick(_ day: UInt32, _ night: UInt32) -> Color {
         Color(hex: isDark ? night : day)
     }
 
-    var desk: Color { pick(0xF6F3ED, 0x14110E) }
+    var desk: Color { pick(0xF6F3ED, trueBlack ? 0x000000 : 0x14110E) }
     var page: Color { pick(0xFEFDFA, 0x1E1A16) }
     /// Night depth comes from lighter surfaces, never shadows.
     var raised: Color { pick(0xFEFDFA, 0x292420) }

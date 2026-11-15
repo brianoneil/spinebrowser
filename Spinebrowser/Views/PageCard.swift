@@ -33,6 +33,8 @@ struct PageCard: View {
             ZStack(alignment: .top) {
                 if let tab, tab.url != nil {
                     WebViewHost(tabID: tab.id, engine: store.engine) { store.focus(pane: paneIndex) }
+                        // A fresh host after browsing data is cleared, so it builds a fresh web view.
+                        .id(store.webGeneration)
                 } else {
                     StartPage(space: space)
                         .contentShape(Rectangle())

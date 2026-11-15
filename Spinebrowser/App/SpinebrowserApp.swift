@@ -9,6 +9,8 @@ struct SpinebrowserApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
+                // Day or Night overrides the system; Match system leaves it alone.
+                .preferredColorScheme(store.settings.theme.colorScheme)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.saveNow() }
@@ -25,7 +27,7 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var store = store
-        let palette = Palette(isDark: colorScheme == .dark)
+        let palette = Palette(isDark: colorScheme == .dark, trueBlack: store.settings.trueBlackAtNight)
         let spring = Motion.spring(reduce: reduceMotion)
         let runtime = store.focusedRuntime
         let focusedID = store.focusedPane.tabID
@@ -36,6 +38,8 @@ struct RootView: View {
                     .ignoresSafeArea()
             }
             .background(palette.desk.ignoresSafeArea())
+            // Settings take the whole display; the Spine and the page step aside.
+            .navigationDestination(isPresented: $store.isSettingsOpen) { SettingsView() }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button("Back", systemImage: "chevron.left") {

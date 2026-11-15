@@ -66,6 +66,32 @@ struct Pane: Identifiable, Codable, Equatable {
     var spaceID: UUID
 }
 
+/// The habits you set once. Auto-archive timing lives on the store with the archive it drives.
+struct BrowserSettings: Codable, Equatable {
+    enum Theme: String, Codable, CaseIterable, Identifiable {
+        case system, day, night
+        var id: String { rawValue }
+    }
+
+    var theme: Theme = .system
+    var unloadsIdleTabs = true
+    var blocksTrackers = true
+    /// At night the desk goes OLED black. Pages and the Spine keep their tone.
+    var trueBlackAtNight = false
+
+    init() {}
+
+    // Every key is optional on disk, so a setting added later never wipes the saved state.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = BrowserSettings()
+        theme = (try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? defaults.theme
+        unloadsIdleTabs = (try? c.decodeIfPresent(Bool.self, forKey: .unloadsIdleTabs)) ?? defaults.unloadsIdleTabs
+        blocksTrackers = (try? c.decodeIfPresent(Bool.self, forKey: .blocksTrackers)) ?? defaults.blocksTrackers
+        trueBlackAtNight = (try? c.decodeIfPresent(Bool.self, forKey: .trueBlackAtNight)) ?? defaults.trueBlackAtNight
+    }
+}
+
 /// Live web state that never persists.
 struct TabRuntime: Equatable {
     var currentURL: URL?

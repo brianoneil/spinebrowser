@@ -215,6 +215,7 @@ struct CommandResult: Identifiable {
         case togglePair
         case archiveToday
         case showArchive
+        case showSettings
         case newTab
         case spine(SpineState)
     }
@@ -239,10 +240,16 @@ enum CommandModel {
         var sections: [CommandSection] = []
 
         let tabs = openTabs(matching: query, in: store)
-        if !tabs.isEmpty { sections.append(CommandSection(title: "Open tabs", results: tabs)) }
-
         let actions = actions(matching: query, in: store)
-        if !actions.isEmpty { sections.append(CommandSection(title: "Actions", results: actions)) }
+        let tabSection = tabs.isEmpty ? nil : CommandSection(title: "Open tabs", results: tabs)
+        let actionSection = actions.isEmpty ? nil : CommandSection(title: "Actions", results: actions)
+        // Tabs lead, so you switch instead of duplicating, unless a command is a clearly better hit:
+        // "set" should run Settings, not a tab whose letters happen to line up.
+        if commandLeads(query, tabs: tabs, actions: actions) {
+            sections += [actionSection, tabSection].compactMap { $0 }
+        } else {
+            sections += [tabSection, actionSection].compactMap { $0 }
+        }
 
         if !query.isEmpty {
             let archived = store.archive
@@ -333,6 +340,7 @@ enum CommandModel {
             id: "archive-today", kind: .archiveToday, title: "Archive all Today tabs", symbol: "archivebox"
         ))
         commands.append(CommandResult(id: "archive", kind: .showArchive, title: "Show the archive", symbol: "clock"))
+        commands.append(CommandResult(id: "settings", kind: .showSettings, title: "Settings", symbol: "slider.horizontal.3"))
         if !store.isPair {
             commands.append(CommandResult(id: "spine-sidebar", kind: .spine(.sidebar), title: "Spine: Sidebar", symbol: "sidebar.left"))
             commands.append(CommandResult(id: "spine-spines", kind: .spine(.spines), title: "Spine: Spines", symbol: "books.vertical"))
@@ -343,13 +351,32 @@ enum CommandModel {
         if query.isEmpty {
             results += commands.prefix(4)
         } else {
-            results += commands
+            let matched = commands
                 .compactMap { command in score(query, command.title).map { ($0, command) } }
                 .sorted { $0.0 > $1.0 }
                 .prefix(3)
-                .map(\.1)
+            // A command named by what you typed beats searching the web for it.
+            let named = matched.filter { $0.0 >= strongMatch }.map(\.1)
+            let loose = matched.filter { $0.0 < strongMatch }.map(\.1)
+            results = named + results + loose
         }
         return results
+    }
+
+    /// Scores at or above this come from a contiguous match, not letters scattered through a title.
+    private static let strongMatch = 1000
+
+    /// True when a command matches what was typed as a whole word run and no open tab does.
+    private static func commandLeads(_ query: String, tabs: [CommandResult], actions: [CommandResult]) -> Bool {
+        // Go-to and search echo the query in their titles, so only a real command can lead.
+        guard !query.isEmpty, let first = actions.first else { return false }
+        if case .open = first.kind { return false }
+        guard let commandScore = score(query, first.title), commandScore >= strongMatch else { return false }
+        let bestTab = tabs.compactMap { result -> Int? in
+            guard case .tab(let tab) = result.kind else { return nil }
+            return score(query, tab.displayTitle + " " + (tab.host ?? ""))
+        }.max() ?? Int.min
+        return bestTab < strongMatch
     }
 
     static func run(_ result: CommandResult, in store: BrowserStore) {
@@ -363,6 +390,7 @@ enum CommandModel {
         case .togglePair: store.togglePair()
         case .archiveToday: store.archiveAllToday()
         case .showArchive: store.isArchiveOpen = true
+        case .showSettings: store.isSettingsOpen = true
         case .newTab: store.newTab()
         case .spine(let state): store.setSpine(state)
         }
