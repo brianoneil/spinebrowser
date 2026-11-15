@@ -108,11 +108,14 @@ struct AddressChrome: View {
     }
 }
 
-/// Domain only. Tap or pull down for the command bar.
+/// Domain only. Tap or pull down for the command bar; flick up to put it away.
 struct URLPill: View {
     let tab: BrowserTab
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Upward travel while the pill is being flicked away. It follows the finger, never down.
+    @State private var lift: CGFloat = 0
 
     var body: some View {
         let runtime = store.runtime[tab.id]
@@ -146,10 +149,21 @@ struct URLPill: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .offset(y: lift)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 16).onEnded { value in
-                if value.translation.height > 24 { store.isCommandBarOpen = true }
-            }
+            DragGesture(minimumDistance: 16)
+                .onChanged { value in
+                    lift = min(0, value.translation.height)
+                }
+                .onEnded { value in
+                    let spring = Motion.spring(reduce: reduceMotion)
+                    if value.translation.height > 24 {
+                        store.isCommandBarOpen = true
+                    } else if value.translation.height < -24 || value.predictedEndTranslation.height < -60 {
+                        withAnimation(spring) { store.hideAddress() }
+                    }
+                    withAnimation(spring) { lift = 0 }
+                }
         )
         .contextMenu {
             Button("Reload", systemImage: "arrow.clockwise") { store.engine.reload(tab.id) }
@@ -159,6 +173,7 @@ struct URLPill: View {
         }
         .accessibilityLabel("Address, \(host)")
         .accessibilityHint("Opens the command bar")
+        .accessibilityAction(named: "Hide address") { store.hideAddress() }
     }
 }
 

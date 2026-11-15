@@ -214,6 +214,10 @@ final class BrowserStore {
         isAddressHidden = false
     }
 
+    func hideAddress() {
+        isAddressHidden = true
+    }
+
     /// Left alone, the pill steps aside. It waits out a loading page or an open command bar.
     private func scheduleAddressFade() {
         addressFade?.cancel()
