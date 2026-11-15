@@ -162,6 +162,17 @@ private struct SpineItem: View {
             .padding(.top, 13)
             .frame(width: width, height: 150)
             .background(isActive ? p.page : binding.tint(p), in: shape)
+            .overlay(alignment: .topLeading) {
+                if isActive {
+                    ActiveMark(
+                        binding: binding,
+                        isFocused: store.paneIndex(showing: tab.id) == store.focusedPaneIndex,
+                        height: 24
+                    )
+                    .padding(.leading, 3)
+                    .padding(.top, 11)
+                }
+            }
             .contentShape(shape)
         }
         .buttonStyle(.plain)
@@ -222,11 +233,32 @@ private struct RailItem: View {
                 .background {
                     if isActive { shape.fill(p.page).opacity(isFocused ? 1 : 0.6) }
                 }
+                .overlay(alignment: .leading) {
+                    if isActive { ActiveMark(binding: binding, isFocused: isFocused).padding(.leading, 3) }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// The active tab's ink mark: a short bar on its leading edge, in the space's binding. Paler on the
+/// unfocused window of a Pair.
+struct ActiveMark: View {
+    let binding: SpaceBinding
+    var isFocused = true
+    var height: CGFloat = 20
+
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        Capsule()
+            .fill(binding.ink(p))
+            .frame(width: 3, height: height)
+            .opacity(isFocused ? 1 : 0.45)
+            .accessibilityHidden(true)
     }
 }

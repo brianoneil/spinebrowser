@@ -271,6 +271,9 @@ struct TabRow: View {
                         .shadow(color: binding.ink(p).opacity(p.isDark ? 0 : 0.10), radius: 6, y: 4)
                 }
             }
+            .overlay(alignment: .leading) {
+                if isActive { ActiveMark(binding: binding, isFocused: isFocused).padding(.leading, 3) }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
