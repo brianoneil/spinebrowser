@@ -3,3 +3,7 @@ build/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# Local research scratch and icon drafts (large, not shipped)
+.firecrawl/
+docs/assets/icon-options/
