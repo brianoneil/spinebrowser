@@ -11,6 +11,8 @@ final class WebEngine: NSObject {
     /// Navigation state for tabs unloaded to save memory; restored on activation.
     private var parked: [UUID: Any] = [:]
     private let configuration = WKWebViewConfiguration()
+    /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
+    private var panAnchor: CGFloat = 0
 
     init(store: BrowserStore) {
         self.store = store
@@ -33,6 +35,7 @@ final class WebEngine: NSObject {
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
+        view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanned(_:)))
         views[tabID] = view
         observe(view, tabID: tabID)
 
@@ -82,6 +85,32 @@ final class WebEngine: NSObject {
         if let view = views.removeValue(forKey: tabID) {
             view.stopLoading()
             view.removeFromSuperview()
+        }
+    }
+
+    /// Reading down the page hides the URL pill; pulling back up, or reaching the top, shows it.
+    /// Only real drags count, so a page that moves on its own never hides the pill.
+    @objc private func scrollPanned(_ pan: UIPanGestureRecognizer) {
+        guard let scroll = pan.view as? UIScrollView,
+              let tabID = views.first(where: { $0.value.scrollView === scroll })?.key else { return }
+        let y = pan.translation(in: scroll).y
+        switch pan.state {
+        case .began:
+            panAnchor = y
+        case .changed, .ended:
+            let atTop = scroll.contentOffset.y <= -scroll.adjustedContentInset.top + 1
+            let delta = y - panAnchor
+            // A quick flick ends before it travels far, so its speed counts too.
+            let flick = pan.state == .ended ? pan.velocity(in: scroll).y : 0
+            if delta < -24 || flick < -400 {
+                store?.setAddressHidden(true, for: tabID)
+                panAnchor = y
+            } else if delta > 24 || flick > 400 || (atTop && delta >= 0) {
+                store?.setAddressHidden(false, for: tabID)
+                panAnchor = y
+            }
+        default:
+            break
         }
     }
 

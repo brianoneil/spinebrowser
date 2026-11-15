@@ -42,7 +42,7 @@ struct PageCard: View {
                     LoadingHairline(runtime: store.runtime[tab.id])
                 }
                 if !isPair, let tab, tab.url != nil {
-                    URLPill(tab: tab).padding(.top, 14)
+                    AddressChrome(tab: tab)
                 }
             }
         }
@@ -70,7 +70,45 @@ struct PageCard: View {
     }
 }
 
-/// The only persistent chrome: domain only. Tap or pull down for the command bar.
+/// The URL pill, or the nub it leaves behind once it has receded.
+struct AddressChrome: View {
+    let tab: BrowserTab
+    @Environment(BrowserStore.self) private var store
+    @Environment(\.palette) private var p
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+
+    var body: some View {
+        // VoiceOver needs the address findable, so the pill stays put.
+        let hidden = store.isAddressHidden && !voiceOver
+        ZStack(alignment: .top) {
+            URLPill(tab: tab)
+                .padding(.top, 14)
+                .offset(y: hidden && !reduceMotion ? -72 : 0)
+                .opacity(hidden ? 0 : 1)
+                .allowsHitTesting(!hidden)
+                .accessibilityHidden(hidden)
+
+            if hidden {
+                Button {
+                    store.showAddress()
+                } label: {
+                    Capsule()
+                        .fill(p.textTertiary.opacity(0.55))
+                        .frame(width: 36, height: 5)
+                        .frame(width: 88, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+                .accessibilityLabel("Show address")
+            }
+        }
+        .animation(Motion.spring(reduce: reduceMotion), value: hidden)
+    }
+}
+
+/// Domain only. Tap or pull down for the command bar.
 struct URLPill: View {
     let tab: BrowserTab
     @Environment(BrowserStore.self) private var store

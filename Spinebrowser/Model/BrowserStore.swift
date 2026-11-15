@@ -19,6 +19,8 @@ final class BrowserStore {
     var isCommandBarOpen = false
     var isSidebarOverlayOpen = false
     var isArchiveOpen = false
+    /// The URL pill recedes while you read down a page and comes back on summon.
+    private(set) var isAddressHidden = false
 
     @ObservationIgnored private var lastTabBySpace: [UUID: UUID] = [:]
     @ObservationIgnored private var lastStrip: SpineState = .spines
@@ -73,6 +75,7 @@ final class BrowserStore {
         touch(tabID)
         if let spaceID = tab.spaceID { lastTabBySpace[spaceID] = tabID }
         isSidebarOverlayOpen = false
+        isAddressHidden = false
         scheduleSave()
     }
 
@@ -195,6 +198,18 @@ final class BrowserStore {
         scheduleSave()
     }
 
+    // MARK: The URL pill
+
+    /// Scrolling hides or shows the pill, but only for the page on screen. The Pair has its own bars.
+    func setAddressHidden(_ hidden: Bool, for tabID: UUID) {
+        guard !isPair, focusedPane.tabID == tabID, isAddressHidden != hidden else { return }
+        isAddressHidden = hidden
+    }
+
+    func showAddress() {
+        isAddressHidden = false
+    }
+
     // MARK: The Spine
 
     func setSpine(_ state: SpineState) {
@@ -268,6 +283,7 @@ final class BrowserStore {
         panes = [kept]
         focusedPaneIndex = 0
         isSidebarOverlayOpen = false
+        isAddressHidden = false
         if let restore = spineBeforePair {
             spineState = restore
             spineBeforePair = nil
@@ -357,6 +373,8 @@ final class BrowserStore {
 
     func webDidUpdate(_ tabID: UUID, title: String?, state: TabRuntime) {
         guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        // A new page brings the pill back so you can see where you landed.
+        if runtime[tabID]?.currentURL != state.currentURL { setAddressHidden(false, for: tabID) }
         if runtime[tabID] != state { runtime[tabID] = state }
         var changed = false
         if let title, !title.isEmpty, tabs[i].title != title {
