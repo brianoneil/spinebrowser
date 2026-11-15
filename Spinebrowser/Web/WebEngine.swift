@@ -10,6 +10,9 @@ final class WebEngine: NSObject {
     private var observers: [UUID: [NSKeyValueObservation]] = [:]
     /// Navigation state for tabs unloaded to save memory; restored on activation.
     private var parked: [UUID: Any] = [:]
+    /// The navigation loading each tab's own saved address. Only that page's icon may stand in for
+    /// the address: a pinned tab you've searched from must keep its own icon.
+    private var homeNavigations: [UUID: WKNavigation] = [:]
     private let configuration = WKWebViewConfiguration()
     private var blocker: ContentBlocker?
     /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
@@ -66,7 +69,7 @@ final class WebEngine: NSObject {
         if let state = parked.removeValue(forKey: tabID) {
             view.interactionState = state
         } else if let url = tab.url {
-            view.load(URLRequest(url: url))
+            homeNavigations[tabID] = view.load(URLRequest(url: url))
         }
         return view
     }
@@ -74,7 +77,8 @@ final class WebEngine: NSObject {
     func load(_ url: URL, in tabID: UUID) {
         parked[tabID] = nil
         if let view = views[tabID] {
-            view.load(URLRequest(url: url))
+            let navigation = view.load(URLRequest(url: url))
+            homeNavigations[tabID] = url == store?.tab(id: tabID)?.url ? navigation : nil
         }
         // Otherwise the tab's stored URL loads when its view is first shown.
     }
@@ -85,7 +89,7 @@ final class WebEngine: NSObject {
     func reload(_ tabID: UUID) {
         guard let view = views[tabID] else { return }
         if view.url == nil, let url = store?.tab(id: tabID)?.url {
-            view.load(URLRequest(url: url))
+            homeNavigations[tabID] = view.load(URLRequest(url: url))
         } else {
             view.reload()
         }
@@ -106,6 +110,7 @@ final class WebEngine: NSObject {
     private func release(_ tabID: UUID) {
         observers[tabID]?.forEach { $0.invalidate() }
         observers[tabID] = nil
+        homeNavigations[tabID] = nil
         if let view = views.removeValue(forKey: tabID) {
             view.stopLoading()
             view.removeFromSuperview()
@@ -180,7 +185,11 @@ final class WebEngine: NSObject {
 extension WebEngine: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let tabID = tabID(for: webView), let pageURL = webView.url, let host = pageURL.host() else { return }
-        let tabHost = store?.tab(id: tabID)?.url?.host()
+        // The tab's saved host borrows this icon only when this page is where its address led,
+        // redirects included. Anywhere else the tab browses keeps its icon to itself.
+        let isHome = navigation != nil && homeNavigations[tabID] === navigation
+        if isHome { homeNavigations[tabID] = nil }
+        let aliases = isHome ? [store?.tab(id: tabID)?.url?.host()].compactMap { $0 } : []
         let script = """
         (function () {
           var link = document.querySelector('link[rel~="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]');
@@ -191,9 +200,8 @@ extension WebEngine: WKNavigationDelegate {
             let declared = (result as? String).flatMap { URL(string: $0) }
             let fallback = URL(string: "/favicon.ico", relativeTo: pageURL)?.absoluteURL
             let candidates = [declared, fallback].compactMap { $0 }
-            let hosts = [host, tabHost].compactMap { $0 }
             Task { @MainActor in
-                self?.store?.favicons.fetch(hosts: hosts, candidates: candidates)
+                self?.store?.favicons.fetch(pageHost: host, aliases: aliases, candidates: candidates)
             }
         }
     }
