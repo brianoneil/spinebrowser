@@ -116,41 +116,50 @@ struct URLPill: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Upward travel while the pill is being flicked away. It follows the finger, never down.
     @State private var lift: CGFloat = 0
+    /// Set while a drag is under way and briefly after, so the Button doesn't treat a flick as a tap.
+    @State private var isDragging = false
+    @State private var ignoreTapsUntil = Date.distantPast
 
     var body: some View {
         let runtime = store.runtime[tab.id]
         let url = store.currentURL(for: tab)
         let host = url?.host().map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? "New tab"
         let insecure = runtime.map { !$0.isSecure } ?? (url?.scheme == "http")
-        // Not a Button: a Button fires on release while the finger is still over the pill, and the
-        // pill follows the finger, so every flick would also open the command bar.
-        HStack(spacing: 6) {
-            Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(insecure ? p.danger : p.textSecondary)
-            if insecure {
-                // Madder always comes with a word.
-                Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
+        // A real Button, so the pill wins taps over the web page underneath. It fires on release while
+        // the finger is still over the pill, and the pill follows the finger, so drags veto it.
+        Button {
+            guard !isDragging, Date.now >= ignoreTapsUntil else { return }
+            store.isCommandBarOpen = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(insecure ? p.danger : p.textSecondary)
+                if insecure {
+                    // Madder always comes with a word.
+                    Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
+                }
+                Text(host)
+                    .font(Typeface.footnoteStrong)
+                    .foregroundStyle(p.text)
+                    .lineLimit(1)
             }
-            Text(host)
-                .font(Typeface.footnoteStrong)
-                .foregroundStyle(p.text)
-                .lineLimit(1)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 14)
+            .background(p.raised, in: Capsule())
+            .overlay {
+                if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
+            }
+            .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
+            .padding(.vertical, 7)
+            .contentShape(Capsule())
         }
-        .padding(.vertical, 7)
-        .padding(.horizontal, 14)
-        .background(p.raised, in: Capsule())
-        .overlay {
-            if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
-        }
-        .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
-        .padding(.vertical, 7)
-        .contentShape(Capsule())
+        .buttonStyle(.plain)
         .offset(y: lift)
-        // The drag gets first claim; a tap only counts if the finger never travelled.
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 16)
                 .onChanged { value in
+                    isDragging = true
                     lift = min(0, value.translation.height)
                 }
                 .onEnded { value in
@@ -161,8 +170,9 @@ struct URLPill: View {
                         withAnimation(spring) { store.hideAddress() }
                     }
                     withAnimation(spring) { lift = 0 }
+                    isDragging = false
+                    ignoreTapsUntil = .now.addingTimeInterval(0.3)
                 }
-                .exclusively(before: TapGesture().onEnded { store.isCommandBarOpen = true })
         )
         .contextMenu {
             Button("Reload", systemImage: "arrow.clockwise") { store.engine.reload(tab.id) }
@@ -170,11 +180,8 @@ struct URLPill: View {
                 Button("Copy link", systemImage: "link") { UIPasteboard.general.url = url }
             }
         }
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Address, \(host)")
-        .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens the command bar")
-        .accessibilityAction { store.isCommandBarOpen = true }
         .accessibilityAction(named: "Hide address") { store.hideAddress() }
     }
 }

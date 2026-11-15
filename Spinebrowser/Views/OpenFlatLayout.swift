@@ -39,11 +39,13 @@ struct OpenFlatLayout: View {
                     )
                 }
                 .padding(.trailing, insets.trailing)
+                // Upright, the system bar runs across the top and owns taps there. Flat it's 0.
+                .padding(.top, insets.top)
 
                 edgeHandle(state: state, resting: resting, spineWidth: spineWidth, canResize: isOpenDisplay && !store.isPair)
 
                 if !showsSidebar {
-                    sidebarOverlay
+                    sidebarOverlay.padding(.top, insets.top)
                 }
             }
             .animation(spring, value: store.spineState)
