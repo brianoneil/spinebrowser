@@ -132,9 +132,20 @@ struct URLPill: View {
             store.isCommandBarOpen = true
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(insecure ? p.danger : p.textSecondary)
+                // A secure page shows its own icon when it has one; otherwise the lock holds the place.
+                if !insecure, let icon = store.favicons.image(for: url?.host()) {
+                    Image(uiImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 14, height: 14)
+                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(insecure ? p.danger : p.textSecondary)
+                }
                 if insecure {
                     // Madder always comes with a word.
                     Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
