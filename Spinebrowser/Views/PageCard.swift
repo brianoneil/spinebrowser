@@ -122,35 +122,33 @@ struct URLPill: View {
         let url = store.currentURL(for: tab)
         let host = url?.host().map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? "New tab"
         let insecure = runtime.map { !$0.isSecure } ?? (url?.scheme == "http")
-        Button {
-            store.isCommandBarOpen = true
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(insecure ? p.danger : p.textSecondary)
-                if insecure {
-                    // Madder always comes with a word.
-                    Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
-                }
-                Text(host)
-                    .font(Typeface.footnoteStrong)
-                    .foregroundStyle(p.text)
-                    .lineLimit(1)
+        // Not a Button: a Button fires on release while the finger is still over the pill, and the
+        // pill follows the finger, so every flick would also open the command bar.
+        HStack(spacing: 6) {
+            Image(systemName: insecure ? "exclamationmark.triangle.fill" : "lock")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(insecure ? p.danger : p.textSecondary)
+            if insecure {
+                // Madder always comes with a word.
+                Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
             }
-            .padding(.vertical, 7)
-            .padding(.horizontal, 14)
-            .background(p.raised, in: Capsule())
-            .overlay {
-                if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
-            }
-            .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
-            .padding(.vertical, 7)
-            .contentShape(Capsule())
+            Text(host)
+                .font(Typeface.footnoteStrong)
+                .foregroundStyle(p.text)
+                .lineLimit(1)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 14)
+        .background(p.raised, in: Capsule())
+        .overlay {
+            if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
+        }
+        .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
+        .padding(.vertical, 7)
+        .contentShape(Capsule())
         .offset(y: lift)
-        .simultaneousGesture(
+        // The drag gets first claim; a tap only counts if the finger never travelled.
+        .gesture(
             DragGesture(minimumDistance: 16)
                 .onChanged { value in
                     lift = min(0, value.translation.height)
@@ -164,6 +162,7 @@ struct URLPill: View {
                     }
                     withAnimation(spring) { lift = 0 }
                 }
+                .exclusively(before: TapGesture().onEnded { store.isCommandBarOpen = true })
         )
         .contextMenu {
             Button("Reload", systemImage: "arrow.clockwise") { store.engine.reload(tab.id) }
@@ -171,8 +170,11 @@ struct URLPill: View {
                 Button("Copy link", systemImage: "link") { UIPasteboard.general.url = url }
             }
         }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Address, \(host)")
+        .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens the command bar")
+        .accessibilityAction { store.isCommandBarOpen = true }
         .accessibilityAction(named: "Hide address") { store.hideAddress() }
     }
 }
