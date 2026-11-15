@@ -94,7 +94,7 @@ The tab UI lives on the **left** edge of the open display, opposite the system's
 | State | Width | What it shows | Use |
 |---|---|---|---|
 | **Sidebar** | 280pt | Space header + binding switcher, Essentials grid, Pinned, Today (with copper countdown), Search or command | Default; organizing, switching spaces |
-| **Spines** | 56pt | Chrome-style tabs rotated 90°: favicon upright, title running top-to-bottom like a book spine, vertical scroll, tap to switch. Active spine joins the page; × on the active spine | Reading with names visible; ~3 tabs per screen |
+| **Spines** | 56pt | Chrome-style tabs rotated 90°: favicon upright, title running top-to-bottom like a book spine, vertical scroll, tap to switch. Active spine joins the page; × on the active spine. Pinned spines sit above a rule, Today below, as in Rail | Reading with names visible; ~3 tabs per screen |
 | **Rail** | 56pt | Favicons only, stacked; active tab marked | Many tabs; ~3× density of Spines |
 | **Hidden** | 0pt | Nothing; swipe in from the left edge and the Sidebar slides over the page as an overlay, then slides away after a pick | Full-bleed reading, video |
 

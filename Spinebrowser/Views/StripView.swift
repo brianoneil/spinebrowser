@@ -19,17 +19,11 @@ struct StripView: View {
             ScrollViewReader { scroller in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
-                        if mode == .rail {
-                            // Pinned sit above the rule.
-                            ForEach(store.pinned(in: space.id)) { RailItem(tab: $0, binding: binding).id($0.id) }
-                            if !store.pinned(in: space.id).isEmpty { rule.padding(.vertical, 4).padding(.leading, 7) }
-                            ForEach(store.today(in: space.id)) { RailItem(tab: $0, binding: binding).id($0.id) }
-                        } else {
-                            // About three spines fit, so Today leads and Pinned follows.
-                            ForEach(store.today(in: space.id) + store.pinned(in: space.id)) {
-                                SpineItem(tab: $0, binding: binding).id($0.id)
-                            }
-                        }
+                        // Pinned sit above the rule and Today below it, in both modes.
+                        let pinned = store.pinned(in: space.id)
+                        ForEach(pinned) { item($0) }
+                        if !pinned.isEmpty { rule.padding(.vertical, 4).padding(.leading, 7) }
+                        ForEach(store.today(in: space.id)) { item($0) }
                     }
                     .frame(width: 50, alignment: .leading)
                 }
@@ -56,6 +50,16 @@ struct StripView: View {
                 }
             }
         )
+    }
+
+    @ViewBuilder
+    private func item(_ tab: BrowserTab) -> some View {
+        let binding = store.activeSpace.binding
+        if mode == .rail {
+            RailItem(tab: tab, binding: binding).id(tab.id)
+        } else {
+            SpineItem(tab: tab, binding: binding).id(tab.id)
+        }
     }
 
     private func spaceMark(_ space: Space) -> some View {
