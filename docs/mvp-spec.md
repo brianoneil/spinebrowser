@@ -109,8 +109,11 @@ The open display is one canvas, so split view is in-app: **two browser windows, 
 
 - **Independent instances.** Each window has its own history, scroll state, and space (and its own cookies once Profiles ship). For example, Work in Lapis on the left and Personal in Verdigris on the right. Each window's top bar is tinted by its binding.
 - **Divider on the fold.** The 12pt gutter sits on the crease (x 475.5), so the crease hides in it. Flat, you can drag the divider to resize, with a magnetic detent at the fold. When the device bends, it locks to 50/50.
-- **Spine drops to the Rail (56pt)** to give both pages room. A swipe from the left edge slides the full Sidebar over the Pair, with a scrim. Tabs open in the Pair wear a Left or Right badge. Long-press a tab to open it on the left, open it on the right, or start a new Pair. You can also drag a tab row onto a window.
-- **Drag and drop between windows:** images, text, links, whole tabs. The target window shows a drop zone, and a dropped image lands with its source link.
+- **Spine drops to the Rail (56pt)** to give both pages room. A swipe from the left edge slides the full Sidebar over the Pair, with a scrim. Long-press a tab to open it on the left, open it on the right, or start a new Pair. You can also drag a tab row onto a window.
+- **A Pair is kept like one tab.** It sits in the Spine as one row, its two tabs side by side; in Spines and the Rail it's one item with both icons stacked. Pick any other tab and the Pair waits in the list as it was. Tap either half to bring both windows back with that side focused. Only you change a Pair: drop a tab or link on a window, Open on the left or right, Swap sides, Separate tabs, Close both tabs. Closing one of its tabs leaves the other on screen alone. Each Pair remembers its own divider.
+- **Drag and drop between windows:** images, text, links, whole tabs. A tab carried over a window shows a drop zone (Open here, or Swap sides when it's already across); over a single page the zone splits on the fold to start a Pair. A link carried out of one page turns the other window's bar into a drop zone, and the page below keeps its own drops so editors still take images and text.
+- **Drop to keep.** Essentials and Pinned take drops too. A tab moves to that tier; a link becomes a new tab kept there. Nothing on screen changes.
+- **Divider.** Double-tap the grip to send it back to the fold.
 - **Focus.** Exactly one window is focused, shown by an outline in its binding's ink. The system column acts on the focused window; tap the other window to move focus.
 - **Open on the other side.** Long-press a link and Glance opens over the *other* window, with "Keep on right" to promote it there (see §4.6).
 - **Closing:** the focused window takes the cover screen. The Pair stays intact, and you swipe the URL pill to flip between the two windows. On the Shelf, the Pair shows as one card. Opening the device restores both windows to their sides of the crease.
@@ -266,7 +269,7 @@ Consequences:
 Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1S8F2Q):
 
 - **Design Language:** Principles · 01 Color (the reading room, Bindings) · 01b Light & dark · 02 Typography · 03 Space & motion · 04 Device & system UI · 05 The Spine (all four states).
-- **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright.
+- **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright · 11 Pairs kept, one row in the Spine · 12 Drag a tab onto a window · 13 Drag a link across the Pair.
 - **Settings:** 00 cover · 01 Settings, day, open flat · 02 Settings, night, open flat · 03 Open from the command bar.
 - **Modes v1:** superseded. It used a two-screen model and a standard iPhone status bar.
 

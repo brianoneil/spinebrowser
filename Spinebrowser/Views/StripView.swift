@@ -20,17 +20,24 @@ struct StripView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         // Pinned sit above the rule and Today below it, in both modes.
-                        let pinned = store.pinned(in: space.id)
-                        ForEach(pinned) { item($0) }
-                        if !pinned.isEmpty { rule.padding(.vertical, 4).padding(.leading, 7) }
-                        ForEach(store.today(in: space.id)) { item($0) }
+                        let entries = store.spineEntries(in: space.id)
+                        if !entries.pinned.isEmpty || store.drag != nil {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if entries.pinned.isEmpty { PinPlaceholder(compact: true) }
+                                ForEach(entries.pinned) { item($0) }
+                            }
+                            .keepDropTarget(.pinned, radius: 12)
+                            rule.padding(.vertical, 4).padding(.leading, 7)
+                        }
+                        ForEach(entries.today) { item($0) }
                     }
                     .frame(width: 50, alignment: .leading)
                 }
                 .scrollIndicators(.hidden)
-                .onChange(of: store.focusedPane.tabID, initial: true) { _, tabID in
-                    guard let tabID else { return }
-                    withAnimation(Motion.spring(reduce: reduceMotion)) { scroller.scrollTo(tabID, anchor: .center) }
+                // A Pair on screen scrolls to its item; a tab on its own scrolls to itself.
+                .onChange(of: store.shownPairID ?? store.focusedPane.tabID, initial: true) { _, anchor in
+                    guard let anchor else { return }
+                    withAnimation(Motion.spring(reduce: reduceMotion)) { scroller.scrollTo(anchor, anchor: .center) }
                 }
             }
             expand(binding)
@@ -53,8 +60,18 @@ struct StripView: View {
     }
 
     @ViewBuilder
-    private func item(_ tab: BrowserTab) -> some View {
+    private func item(_ entry: SpineEntry) -> some View {
         let binding = store.activeSpace.binding
+        switch entry {
+        case .pair(let pair):
+            PairStripItem(pair: pair, binding: binding).id(pair.id)
+        case .tab(let tab):
+            tabItem(tab, binding: binding)
+        }
+    }
+
+    @ViewBuilder
+    private func tabItem(_ tab: BrowserTab, binding: SpaceBinding) -> some View {
         if mode == .rail {
             RailItem(tab: tab, binding: binding).id(tab.id)
         } else {
@@ -95,9 +112,11 @@ struct StripView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.displayTitle)
+                .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
             }
         }
+        .keepDropTarget(.essential, radius: 12)
         .padding(.trailing, 6)
     }
 
@@ -192,6 +211,7 @@ private struct SpineItem: View {
                 .accessibilityLabel("Close \(tab.displayTitle)")
             }
         }
+        .tabDragSource(tab)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(isActive ? .isSelected : [])
@@ -239,6 +259,7 @@ private struct RailItem: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .tabDragSource(tab)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(isActive ? .isSelected : [])

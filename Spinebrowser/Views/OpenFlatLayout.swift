@@ -35,6 +35,8 @@ struct OpenFlatLayout: View {
                         spineWidth: spineWidth,
                         joined: !showsSidebar && spineWidth > 0 && !showsPair,
                         showsPair: showsPair,
+                        isOpenDisplay: isOpenDisplay,
+                        isBent: Self.isBent(in: geo),
                         creaseX: Self.creaseX(in: geo)
                     )
                 }
@@ -67,6 +69,11 @@ struct OpenFlatLayout: View {
     private static func creaseX(in geo: GeometryProxy) -> CGFloat {
         let division = geo.reservedRegions(kind: .division, options: [.includeInactive]).first
         return division?.frame.midX ?? geo.size.width / 2
+    }
+
+    /// The division region is only active while the device is partly folded.
+    private static func isBent(in geo: GeometryProxy) -> Bool {
+        !geo.reservedRegions(kind: .division).isEmpty
     }
 
     // MARK: Spine
@@ -167,28 +174,81 @@ private struct PageArea: View {
     let spineWidth: CGFloat
     let joined: Bool
     let showsPair: Bool
+    let isOpenDisplay: Bool
+    /// Partly folded. The divider locks to the fold.
+    let isBent: Bool
     /// The crease's x in the layout's coordinate space.
     let creaseX: CGFloat
 
     @Environment(BrowserStore.self) private var store
+    /// The divider's position while a finger moves it. The store only hears where it comes to rest.
+    @State private var liveDivider: CGFloat?
+
+    private static let trailing: CGFloat = 8
+    /// Neither window of the Pair gets narrower than this.
+    private static let minimumWindow: CGFloat = 240
 
     var body: some View {
-        Group {
-            if showsPair {
-                // The 12pt gutter sits on the crease, so the crease hides in it.
-                let lead: CGFloat = spineWidth > 0 ? 8 : 10
-                let leftWidth = max(160, creaseX - Metrics.pairGutter / 2 - spineWidth - lead)
-                HStack(spacing: Metrics.pairGutter) {
-                    PageCard(paneIndex: 0).frame(width: leftWidth)
-                    PageCard(paneIndex: 1)
+        GeometryReader { geo in
+            // This view starts where the Spine ends, so the crease moves left by the Spine's width.
+            let foldX = creaseX - spineWidth
+            Group {
+                if showsPair {
+                    pair(width: geo.size.width, foldX: foldX)
+                } else {
+                    single(foldX: foldX)
                 }
-                .padding(.leading, lead)
-            } else {
-                PageCard(paneIndex: store.focusedPaneIndex, joined: joined)
-                    .padding(.leading, joined ? 0 : 10)
+            }
+            .padding(.vertical, 10)
+        }
+    }
+
+    // MARK: The Pair
+
+    private func pair(width: CGFloat, foldX: CGFloat) -> some View {
+        let gutter = Metrics.pairGutter
+        let lead: CGFloat = spineWidth > 0 ? 8 : 10
+        let end = width - Self.trailing
+        let range = (lead + Self.minimumWindow + gutter / 2)...max(lead + Self.minimumWindow + gutter / 2, end - Self.minimumWindow - gutter / 2)
+        let rested = store.pairSplit.map { lead + CGFloat($0) * (end - lead) } ?? foldX
+        // The gutter sits on the crease, so the crease hides in it. Bent, it can't leave.
+        let dividerX = isBent ? foldX : min(range.upperBound, max(range.lowerBound, liveDivider ?? rested))
+        let leftWidth = dividerX - gutter / 2 - lead
+        return HStack(spacing: gutter) {
+            PageCard(paneIndex: 0).frame(width: leftWidth)
+            PageCard(paneIndex: 1)
+        }
+        .padding(.leading, lead)
+        .padding(.trailing, Self.trailing)
+        .overlay {
+            if !isBent {
+                PairDivider(x: dividerX, foldX: foldX, range: range) { live in
+                    liveDivider = live
+                } onRest: { position in
+                    liveDivider = nil
+                    store.setPairSplit(position.map { Double(($0 - lead) / (end - lead)) })
+                }
             }
         }
-        .padding(.vertical, 10)
-        .padding(.trailing, 8)
+    }
+
+    // MARK: One page
+
+    private func single(foldX: CGFloat) -> some View {
+        let lead: CGFloat = joined ? 0 : 10
+        return PageCard(paneIndex: store.focusedPaneIndex, joined: joined)
+            .overlay(alignment: .leading) {
+                // A tab carried over the page can start a Pair on either side of the fold.
+                if isOpenDisplay, case let .tab(tabID) = store.drag, store.focusedPane.tabID != tabID {
+                    // Each target insets its zone 12pt, so the two meet in a gap centred on the fold.
+                    HStack(spacing: 0) {
+                        TabDropTarget(label: "Open on the left") { store.drop(tab: $0, onSide: 0) }
+                            .frame(width: max(0, foldX - lead))
+                        TabDropTarget(label: "Open on the right") { store.drop(tab: $0, onSide: 1) }
+                    }
+                }
+            }
+            .padding(.leading, lead)
+            .padding(.trailing, Self.trailing)
     }
 }

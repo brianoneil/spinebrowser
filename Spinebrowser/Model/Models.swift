@@ -66,6 +66,36 @@ struct Pane: Identifiable, Codable, Equatable {
     var spaceID: UUID
 }
 
+/// Two tabs kept side by side, like one tab. Picking either brings back both, each in its window.
+struct TabPair: Identifiable, Codable, Equatable {
+    var id = UUID()
+    /// Left, then right.
+    var tabIDs: [UUID]
+    /// Where the divider rests, as a share of the page row. Nil rests it on the fold.
+    var split: Double?
+}
+
+/// One line of the Spine: a tab, or a Pair standing in for its two tabs.
+enum SpineEntry: Identifiable {
+    case tab(BrowserTab)
+    case pair(TabPair)
+
+    var id: UUID {
+        switch self {
+        case .tab(let tab): tab.id
+        case .pair(let pair): pair.id
+        }
+    }
+}
+
+/// What a drag under way is carrying. Never persists.
+enum DragCargo: Equatable {
+    /// A tab picked up from the Spine or a window's bar.
+    case tab(UUID)
+    /// An image, link or text picked up from the page in this tab.
+    case web(from: UUID)
+}
+
 /// The habits you set once. Auto-archive timing lives on the store with the archive it drives.
 struct BrowserSettings: Codable, Equatable {
     enum Theme: String, Codable, CaseIterable, Identifiable {
