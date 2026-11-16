@@ -183,6 +183,16 @@ final class WebEngine: NSObject {
 }
 
 extension WebEngine: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // Transparent until the first page commits, so a loading tab shows the card instead of
+        // a white flash. After that WebKit must paint the page canvas itself: a site that sets
+        // no background of its own expects white behind its text, not the app's dark surface.
+        if !webView.isOpaque {
+            webView.isOpaque = true
+            webView.backgroundColor = nil
+        }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let tabID = tabID(for: webView), let pageURL = webView.url, let host = pageURL.host() else { return }
         // The tab's saved host borrows this icon only when this page is where its address led,
