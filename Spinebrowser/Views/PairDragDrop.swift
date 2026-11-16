@@ -170,7 +170,8 @@ struct PinPlaceholder: View {
 // MARK: The divider
 
 /// The Pair's gutter handle. Flat, it drags to resize with a magnetic detent at the fold.
-/// Bent, the divider locks to the fold and the grip goes away.
+/// Bent, the divider locks to the fold and the grip goes away. Without a fold (iPad) the detent
+/// is the even split.
 struct PairDivider: View {
     /// The divider's centre, in the page row's coordinates.
     let x: CGFloat
@@ -182,6 +183,7 @@ struct PairDivider: View {
 
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.hasFold) private var hasFold
     @State private var dragStart: CGFloat?
 
     /// How close to the fold a release has to be to snap onto it.
@@ -205,13 +207,13 @@ struct PairDivider: View {
                     .simultaneousGesture(TapGesture(count: 2).onEnded { rest(at: foldX) })
                     .accessibilityElement()
                     .accessibilityLabel("Divider")
-                    .accessibilityValue(onFold ? "On the fold" : "Left window \(Int(share(geo) * 100)) percent")
+                    .accessibilityValue(onFold ? (hasFold ? "On the fold" : "Even split") : "Left window \(Int(share(geo) * 100)) percent")
                     .accessibilityAdjustableAction { direction in
                         let step = (range.upperBound - range.lowerBound) / 10
                         let next = x + (direction == .increment ? step : -step)
                         rest(at: min(range.upperBound, max(range.lowerBound, next)))
                     }
-                    .accessibilityAction(named: "Rest on the fold") { rest(at: foldX) }
+                    .accessibilityAction(named: hasFold ? "Rest on the fold" : "Split evenly") { rest(at: foldX) }
 
                 // The fold's detent: a bead on the crease, filled when the divider sits on it.
                 if isDragging {

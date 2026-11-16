@@ -5,7 +5,7 @@ import WebKit
 /// reloads and scroll, form input and in-flight loads survive.
 @MainActor
 final class WebEngine: NSObject {
-    private weak var store: BrowserStore?
+    private weak var library: Library?
     private var views: [UUID: WKWebView] = [:]
     private var observers: [UUID: [NSKeyValueObservation]] = [:]
     /// Navigation state for tabs unloaded to save memory; restored on activation.
@@ -18,13 +18,13 @@ final class WebEngine: NSObject {
     /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
     private var panAnchor: CGFloat = 0
 
-    init(store: BrowserStore) {
-        self.store = store
+    init(library: Library) {
+        self.library = library
         super.init()
         // One shared cookie jar in MVP. Per-space data stores arrive with Profiles.
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        blocker = ContentBlocker(controller: configuration.userContentController, enabled: store.settings.blocksTrackers)
+        blocker = ContentBlocker(controller: configuration.userContentController, enabled: library.settings.blocksTrackers)
         // Pages report when a drag of theirs starts and ends, so the other window can offer a drop zone.
         configuration.userContentController.addUserScript(
             WKUserScript(source: Self.dragScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
@@ -47,10 +47,7 @@ final class WebEngine: NSObject {
         guard let webView, let tabID = tabID(for: webView) else { return }
         // Off the current turn, in case WebKit calls in mid-update.
         Task { @MainActor in
-            switch kind {
-            case "start": self.store?.beginDrag(.web(from: tabID))
-            default: self.store?.endDrag(.web(from: tabID))
-            }
+            self.library?.pageDragged(kind == "start", from: tabID)
         }
     }
 
@@ -86,13 +83,15 @@ final class WebEngine: NSObject {
 
     func webView(for tabID: UUID) -> WKWebView? {
         if let existing = views[tabID] { return existing }
-        guard let tab = store?.tab(id: tabID) else { return nil }
+        guard let tab = library?.tab(id: tabID) else { return nil }
 
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
         view.allowsLinkPreview = true
+        // Edit ▸ Find (⌘F) and ⌘G reach the page through the system's find bar.
+        view.isFindInteractionEnabled = true
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
@@ -113,7 +112,7 @@ final class WebEngine: NSObject {
         parked[tabID] = nil
         if let view = views[tabID] {
             let navigation = view.load(URLRequest(url: url))
-            homeNavigations[tabID] = url == store?.tab(id: tabID)?.url ? navigation : nil
+            homeNavigations[tabID] = url == library?.tab(id: tabID)?.url ? navigation : nil
         }
         // Otherwise the tab's stored URL loads when its view is first shown.
     }
@@ -121,9 +120,15 @@ final class WebEngine: NSObject {
     func goBack(_ tabID: UUID) { views[tabID]?.goBack() }
     func goForward(_ tabID: UUID) { views[tabID]?.goForward() }
 
+    /// Steps the page's zoom, between half and three times. Nil goes back to actual size.
+    func zoom(_ tabID: UUID, by step: CGFloat?) {
+        guard let view = views[tabID] else { return }
+        view.pageZoom = step.map { min(3, max(0.5, view.pageZoom + $0)) } ?? 1
+    }
+
     func reload(_ tabID: UUID) {
         guard let view = views[tabID] else { return }
-        if view.url == nil, let url = store?.tab(id: tabID)?.url {
+        if view.url == nil, let url = library?.tab(id: tabID)?.url {
             homeNavigations[tabID] = view.load(URLRequest(url: url))
         } else {
             view.reload()
@@ -167,10 +172,10 @@ final class WebEngine: NSObject {
             // A quick flick ends before it travels far, so its speed counts too.
             let flick = pan.state == .ended ? pan.velocity(in: scroll).y : 0
             if delta < -24 || flick < -400 {
-                store?.setAddressHidden(true, for: tabID)
+                library?.setAddressHidden(true, for: tabID)
                 panAnchor = y
             } else if delta > 24 || flick > 400 || (atTop && delta >= 0) {
-                store?.setAddressHidden(false, for: tabID)
+                library?.setAddressHidden(false, for: tabID)
                 panAnchor = y
             }
         default:
@@ -213,7 +218,7 @@ final class WebEngine: NSObject {
             progress: view.estimatedProgress,
             isSecure: url?.scheme != "http"
         )
-        store?.webDidUpdate(tabID, title: view.title, state: state)
+        library?.webDidUpdate(tabID, title: view.title, state: state)
     }
 }
 
@@ -234,7 +239,7 @@ extension WebEngine: WKNavigationDelegate {
         // redirects included. Anywhere else the tab browses keeps its icon to itself.
         let isHome = navigation != nil && homeNavigations[tabID] === navigation
         if isHome { homeNavigations[tabID] = nil }
-        let aliases = isHome ? [store?.tab(id: tabID)?.url?.host()].compactMap { $0 } : []
+        let aliases = isHome ? [library?.tab(id: tabID)?.url?.host()].compactMap { $0 } : []
         let script = """
         (function () {
           var link = document.querySelector('link[rel~="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]');
@@ -246,7 +251,7 @@ extension WebEngine: WKNavigationDelegate {
             let fallback = URL(string: "/favicon.ico", relativeTo: pageURL)?.absoluteURL
             let candidates = [declared, fallback].compactMap { $0 }
             Task { @MainActor in
-                self?.store?.favicons.fetch(pageHost: host, aliases: aliases, candidates: candidates)
+                self?.library?.favicons.fetch(pageHost: host, aliases: aliases, candidates: candidates)
             }
         }
     }
@@ -261,7 +266,7 @@ extension WebEngine: WKUIDelegate {
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
-            store?.newTab(url: url)
+            library?.pageOpened(url, from: tabID(for: webView))
         }
         return nil
     }

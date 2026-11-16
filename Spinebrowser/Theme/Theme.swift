@@ -105,6 +105,8 @@ enum Metrics {
     static let pairGutter: CGFloat = 12
     /// Below this the window is a cover-sized (compact) layout, not the open display.
     static let openMinimumWidth: CGFloat = 600
+    /// On iPad, below this the Sidebar would crowd the page, so the window starts in Spines.
+    static let sidebarMinimumWidth: CGFloat = 1000
 }
 
 enum Motion {

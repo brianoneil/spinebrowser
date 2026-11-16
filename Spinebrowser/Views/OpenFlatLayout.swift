@@ -25,30 +25,52 @@ struct OpenFlatLayout: View {
             let showsSidebar = dragWidth.map { $0 > 168 } ?? (state == .sidebar)
             let showsPair = store.isPair && isOpenDisplay
             let spring = Motion.spring(reduce: reduceMotion)
+            let hasFold = Self.hasFold(in: geo)
+            // iPad: the cloth runs under the status bar and the window controls; the page sits
+            // below the app's own bar. The Duo's system column needs none of this.
+            let ownBar = Platform.drawsOwnToolbar
+            let corner = geo.containerCornerInsets.topLeading
+            // Under the window controls the Space header sits a row below them, not a full corner below.
+            let spineTop: CGFloat = ownBar ? max(insets.top + PadToolbar.top, corner.height - 16) : 0
 
             ZStack(alignment: .topLeading) {
                 p.desk
 
                 HStack(spacing: 0) {
                     spine(state: state, width: spineWidth, showsSidebar: showsSidebar)
+                        .environment(\.spineTopInset, spineTop)
                     PageArea(
                         spineWidth: spineWidth,
                         joined: !showsSidebar && spineWidth > 0 && !showsPair,
                         showsPair: showsPair,
                         isOpenDisplay: isOpenDisplay,
                         isBent: Self.isBent(in: geo),
-                        creaseX: Self.creaseX(in: geo)
+                        creaseX: hasFold ? Self.creaseX(in: geo) : nil
                     )
+                    .padding(.top, ownBar ? insets.top + PadToolbar.band : 0)
+                    .padding(.bottom, ownBar ? 14 : 0)
                 }
                 .padding(.trailing, insets.trailing)
                 // Upright, the system bar runs across the top and owns taps there. Flat it's 0.
-                .padding(.top, insets.top)
+                .padding(.top, ownBar ? 0 : insets.top)
+
+                if ownBar {
+                    PadToolbar(leading: max(spineWidth + 10, corner.width + 8), showsPair: isOpenDisplay)
+                        .padding(.top, insets.top + PadToolbar.top)
+                }
 
                 edgeHandle(state: state, resting: resting, spineWidth: spineWidth, canResize: isOpenDisplay && !store.isPair)
 
                 if !showsSidebar {
-                    sidebarOverlay.padding(.top, insets.top)
+                    sidebarOverlay
+                        .environment(\.spineTopInset, spineTop)
+                        .padding(.top, ownBar ? 0 : insets.top)
                 }
+            }
+            .environment(\.hasFold, hasFold)
+            .onChange(of: geo.size.width >= Metrics.sidebarMinimumWidth, initial: true) { _, roomy in
+                // On iPad a window under 1000pt starts in Spines; widen it and the Sidebar comes back.
+                if ownBar { store.fitSpine(roomForSidebar: roomy) }
             }
             .animation(spring, value: store.spineState)
             .animation(spring, value: store.isPair)
@@ -69,6 +91,11 @@ struct OpenFlatLayout: View {
     private static func creaseX(in geo: GeometryProxy) -> CGFloat {
         let division = geo.reservedRegions(kind: .division, options: [.includeInactive]).first
         return division?.frame.midX ?? geo.size.width / 2
+    }
+
+    /// The Duo reports its crease, active or not. Anywhere else there's no fold.
+    private static func hasFold(in geo: GeometryProxy) -> Bool {
+        !geo.reservedRegions(kind: .division, options: [.includeInactive]).isEmpty
     }
 
     /// The division region is only active while the device is partly folded.
@@ -177,8 +204,9 @@ private struct PageArea: View {
     let isOpenDisplay: Bool
     /// Partly folded. The divider locks to the fold.
     let isBent: Bool
-    /// The crease's x in the layout's coordinate space.
-    let creaseX: CGFloat
+    /// The crease's x in the layout's coordinate space. Nil without a fold: the middle of the page
+    /// row stands in for it.
+    let creaseX: CGFloat?
 
     @Environment(BrowserStore.self) private var store
     /// The divider's position while a finger moves it. The store only hears where it comes to rest.
@@ -191,12 +219,12 @@ private struct PageArea: View {
     var body: some View {
         GeometryReader { geo in
             // This view starts where the Spine ends, so the crease moves left by the Spine's width.
-            let foldX = creaseX - spineWidth
+            let foldX = creaseX.map { $0 - spineWidth }
             Group {
                 if showsPair {
                     pair(width: geo.size.width, foldX: foldX)
                 } else {
-                    single(foldX: foldX)
+                    single(width: geo.size.width, foldX: foldX)
                 }
             }
             .padding(.vertical, 10)
@@ -205,10 +233,12 @@ private struct PageArea: View {
 
     // MARK: The Pair
 
-    private func pair(width: CGFloat, foldX: CGFloat) -> some View {
+    private func pair(width: CGFloat, foldX crease: CGFloat?) -> some View {
         let gutter = Metrics.pairGutter
         let lead: CGFloat = spineWidth > 0 ? 8 : 10
         let end = width - Self.trailing
+        // The detent: the fold on the Duo, the even split everywhere else.
+        let foldX = crease ?? (lead + end) / 2
         let range = (lead + Self.minimumWindow + gutter / 2)...max(lead + Self.minimumWindow + gutter / 2, end - Self.minimumWindow - gutter / 2)
         let rested = store.pairSplit.map { lead + CGFloat($0) * (end - lead) } ?? foldX
         // The gutter sits on the crease, so the crease hides in it. Bent, it can't leave.
@@ -234,8 +264,9 @@ private struct PageArea: View {
 
     // MARK: One page
 
-    private func single(foldX: CGFloat) -> some View {
+    private func single(width: CGFloat, foldX crease: CGFloat?) -> some View {
         let lead: CGFloat = joined ? 0 : 10
+        let foldX = crease ?? (lead + width - Self.trailing) / 2
         return PageCard(paneIndex: store.focusedPaneIndex, joined: joined)
             .overlay(alignment: .leading) {
                 // A tab carried over the page can start a Pair on either side of the fold.

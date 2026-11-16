@@ -53,6 +53,7 @@ private struct SettingsSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .environment(\.hasFold, !geo.reservedRegions(kind: .division, options: [.includeInactive]).isEmpty)
             .background(p.page)
             .clipShape(shape)
             .background {
@@ -296,7 +297,7 @@ private struct AboutSection: View {
     var body: some View {
         SettingsSection(title: "About") {
             ValueRow(title: "Version", value: Self.version)
-            ValueRow(title: "Your data", value: "On this phone", detail: "No accounts and no telemetry.")
+            ValueRow(title: "Your data", value: "On this \(Platform.deviceName)", detail: "No accounts and no telemetry.")
         }
     }
 
@@ -312,13 +313,14 @@ private struct AboutSection: View {
 private struct Colophon: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
+    @Environment(\.hasFold) private var hasFold
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Spinebrowser")
                 .font(.system(.body, design: .serif).weight(.semibold))
                 .foregroundStyle(p.text)
-            Text("Made for the fold. Bound in \(store.activeSpace.binding.label).")
+            Text("Made for the \(hasFold ? "fold" : "page"). Bound in \(store.activeSpace.binding.label).")
                 .font(.system(.footnote, design: .serif).italic())
                 .foregroundStyle(p.textSecondary)
         }
@@ -471,7 +473,7 @@ private struct RestoreRow: View {
             title: "Restore purchases",
             detail: isRestoring
                 ? "Checking your purchases…"
-                : outcome ?? "Paid before? Bring it back to this phone."
+                : outcome ?? "Paid before? Bring it back to this \(Platform.deviceName)."
         ) {
             isRestoring = true
             Task {

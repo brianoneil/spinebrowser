@@ -37,7 +37,10 @@ struct PageCard: View {
             ZStack(alignment: .top) {
                 if let tab, tab.url != nil {
                     // While a tab is in flight the page steps out of the way, so the drop lands on the window.
-                    WebViewHost(tabID: tab.id, engine: store.engine, isInteractive: !isCarryingTab) {
+                    WebViewHost(
+                        tabID: tab.id, engine: store.engine, isInteractive: !isCarryingTab,
+                        isWanted: { [weak store] in store?.shownTabIDs.contains(tab.id) ?? false }
+                    ) {
                         store.focus(pane: paneIndex)
                     }
                         // A fresh host after browsing data is cleared, so it builds a fresh web view.

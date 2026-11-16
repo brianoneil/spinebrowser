@@ -8,6 +8,7 @@ struct StripView: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.spineTopInset) private var spineTopInset
 
     var body: some View {
         let space = store.activeSpace
@@ -42,7 +43,7 @@ struct StripView: View {
             }
             expand(binding)
         }
-        .padding(.top, 40)
+        .padding(.top, 40 + spineTopInset)
         .padding(.bottom, 16)
         .padding(.leading, 6)
         .frame(width: Metrics.stripWidth)
@@ -95,6 +96,7 @@ struct StripView: View {
                 }
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .padding(.trailing, 6)
         .accessibilityLabel("\(space.name) space. Switch space")
     }
@@ -111,6 +113,7 @@ struct StripView: View {
                         .padding(-4)
                 }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .accessibilityLabel(tab.displayTitle)
                 .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
@@ -139,6 +142,7 @@ struct StripView: View {
                 .background(binding.tint(p), in: Circle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .padding(.trailing, 6)
         .accessibilityLabel("Show sidebar")
     }
@@ -195,6 +199,7 @@ private struct SpineItem: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .overlay(alignment: .bottom) {
             if isActive {
                 Button {
@@ -207,6 +212,7 @@ private struct SpineItem: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .padding(.bottom, 4)
                 .accessibilityLabel("Close \(tab.displayTitle)")
             }
@@ -259,6 +265,7 @@ private struct RailItem: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .tabDragSource(tab)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityLabel(tab.displayTitle)

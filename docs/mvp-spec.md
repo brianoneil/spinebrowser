@@ -179,11 +179,38 @@ The habits you set once. Settings take the inner display: the Spine and the page
 | Privacy | **Clear browsing data…** | — | Madder, behind a confirmation. Clears what §4.8 lists, then says so in place: "Cleared. Sites will ask you to sign in again." |
 | Pro | **Get Spine Pro…** · **Restore purchases** | — | Shown to free customers. Get Spine Pro opens the RevenueCat paywall, and its footnote quotes the store's own prices. Restore brings back a purchase made with the same Apple Account and says so in place when it finds none. |
 | Pro | **Spine Pro** · **Manage purchase…** | — | Shown to paid customers. Spine Pro reads Active with the renewal or end date, or "Yours for life." Manage purchase opens RevenueCat's Customer Center. |
-| About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone, with no accounts and no telemetry. |
+| About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone (on iPad, this iPad), with no accounts and no telemetry. |
 
 - Settings persist with the rest of local state. Every setting decodes with a default, so a setting added later never wipes saved tabs.
 - Toggles switch on the switch itself, as in iOS Settings. Each segment and swatch is its own accessibility element with a selected trait.
 - Design: Paper page **Settings** (day, night, command-bar entry; Pro: free at rest, free scrolled, paid).
+
+### 4.12 iPad
+
+The same browser, minus the fold. Everything above holds on iPad; this is what changes.
+
+- **The app draws its own bar.** iPadOS has no system column, so the controls come inside: one row of glass buttons on the desk, above the page. The Spine toggle and back/forward lead; Share, Pair and New tab trail. The bar acts on the focused window, like the system column. The Duo keeps its system column.
+- **The cloth runs to the top.** The Spine sits under the 24pt status bar and, in a window, under the window controls. Its content starts below both. The page sits below the bar.
+- **No fold, no crease.** The divider of a Pair rests wherever you leave it, with 240pt for each window. The bead marks the even split instead of the fold: a magnetic detent, filled when the divider sits on it. Double-tap the grip to split evenly. Nothing ever locks.
+- **Width decides the layout, not the device.** Under 600pt the window takes the cover's layout: the Spine slides in over the page and a Pair shows its focused side. Under 1000pt the window starts in Spines, so an 11-inch in portrait has room to read. Widen it and the Sidebar comes back. A Pair stays available in portrait.
+- **Every window is its own browser.** Each window keeps its own Space, focus, Spine and Pair. Spaces, tabs, Pairs, the archive and settings are shared: pin a tab in one window and it's pinned in both. A window comes back to the tabs it had.
+- **One tab, one window.** A page lives in one place at a time. Pick a tab that another window shows and it moves here; that window falls back to its most recent tab that isn't on screen anywhere. A new window starts on a fresh tab in the Space you were using.
+- **Keyboard and menu bar.** Every command lives in the menu bar, so iPadOS lists them when you hold ⌘:
+
+| Menu | Command | Shortcut |
+|---|---|---|
+| File | New Tab · New Window | ⌘T · ⌘N |
+| View | Change the Spine · Reload · Zoom In · Zoom Out · Actual Size | ⌃⌘S · ⌘R · ⌘+ · ⌘− · ⌘0 |
+| History | Back · Forward · Show the Archive | ⌘[ · ⌘] · ⌘Y |
+| Tabs | Search or Command · Reopen Closed Tab · Close Tab | ⌘L · ⇧⌘T · ⌘W |
+| Tabs | Next Tab · Previous Tab · Tab 1 to 8 · Last Tab | ⌃Tab · ⌃⇧Tab · ⌘1–⌘8 · ⌘9 |
+| Tabs | Pin Tab · Open a Pair · Focus the Other Window · Swap Sides | ⌘D · ⌥⌘P · ⌥⌘→ · ⌥⌘S |
+| Spaces | Each Space by name | ⌃1–⌃9 |
+
+  Find on the page is the system's Edit ▸ Find (⌘F). Pair commands stay grey until a Pair is open.
+- **Pointer.** Tabs, Pairs and Essentials lift under the pointer, and the pointer melts into them. Touch never sees it.
+- **Copy.** Words that name the fold have a no-fold version: the divider reads "Even split", the colophon says "Made for the page", and Settings says "this iPad".
+- Design: Paper page **iPad — no fold** (01 landscape with the Sidebar · 02 the Pair without a crease · 03 portrait with Spines · 04 two windows in Stage Manager · 05 keyboard, menu bar and pointer).
 
 ### Explicitly out of MVP
 
@@ -193,7 +220,7 @@ The habits you set once. Settings take the inner display: the Spine and the page
 - Profiles / container isolation
 - Sync across devices
 - Extensions
-- iPad/macOS versions
+- macOS version (iPad comes first, §4.12)
 
 ---
 
@@ -271,13 +298,14 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 - **Design Language:** Principles · 01 Color (the reading room, Bindings) · 01b Light & dark · 02 Typography · 03 Space & motion · 04 Device & system UI · 05 The Spine (all four states).
 - **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright · 11 Pairs kept, one row in the Spine · 12 Drag a tab onto a window · 13 Drag a link across the Pair.
 - **Settings:** 00 cover · 01 Settings, day, open flat · 02 Settings, night, open flat · 03 Open from the command bar.
+- **iPad — no fold:** 01 Landscape · Sidebar · 02 The Pair, no crease · 03 Portrait · Spines · 04 Stage Manager, two windows · 05 Keyboard, menu bar, pointer.
 - **Modes v1:** superseded. It used a two-screen model and a standard iPhone status bar.
 
 ## 7. Technical architecture
 
 - **Platform:** Swift + SwiftUI (chrome/UI) with UIKit interop where needed; **WKWebView** per pane.
 - **Process isolation:** separate `WKProcessPool` per pane; shared `WKWebsiteDataStore` in MVP (per-space data stores land with Profiles later — design the seam now).
-- **Tab model:** single source of truth (SwiftData or GRDB); panes/scenes render onto it. No tab state in view controllers.
+- **Tab model:** single source of truth; panes and scenes render onto it. No tab state in view controllers. A shared `Library` holds spaces, tabs, Pairs, the archive, settings and the web views; each window's `BrowserStore` holds its panes, Spine and Pair, and saves under the window's scene id. A web view shows in one window at a time.
 - **State restoration:** persist per-pane navigation state, scroll offsets, reader state; restore across launch and geometry change.
 - **Scenes:** `UISceneSession` multi-scene support; one-window-spanned vs two-window modes behind an abstraction layer.
 - **Seam geometry:** if/when Apple exposes viewport-segment APIs in WebKit, adopt; until then compute hinge zone from display geometry and keep a safe inset (never place interactive UI within it). Optionally inject segment info into pages via `WKUserScript` + CSS env polyfill.
@@ -317,7 +345,7 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 4. **AI assist** (on-device page summaries; opt-in "Browse for Me"-style answers).
 5. **Capture/Easel-lite** (live region capture that links back to source).
 6. **Link routing rules** (Arc Air Traffic Control: domain → space).
-7. **iPad/macOS companions** via Catalyst/SwiftUI shared code.
+7. **macOS companion** via SwiftUI shared code, after the iPad (§4.12).
 
 ---
 
