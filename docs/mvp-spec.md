@@ -157,28 +157,30 @@ Zen's Glance, touch-native:
 ### 4.10 Theming & craft (P1)
 
 - Per-space accent color + gradient; chrome tints to match (Arc/Zen).
-- Theme: Match system (default), Day or Night. **True black at night** drops the night desk to #000 for OLED; pages and the Spine keep their tone. A reader-only OLED option arrives with Reader mode (§4.7).
+- Theme: Match system (default), Day or Night. **True black at night** drops the night desk to #000 for OLED; pages and the Spine keep their tone. It's the first Spine Pro feature (§4.11). A reader-only OLED option arrives with Reader mode (§4.7).
 - Motion: spring animations on sidebar reveal, space switch, glance open. Delight budget: one signature animation (Arc's dancing-thumbnail equivalent) — candidate: tabs "shelving" themselves into the archive.
 
 ### 4.11 Settings (P0)
 
 The habits you set once. Settings take the inner display: the Spine and the page step aside, and the system column keeps one control, Back, in the same spot as the browser's Back. Open it from the command bar (type "set", or pick **Settings**).
 
-**Layout.** On the open display the sheet is a two-page spread whose gutter is the crease. Each column is measured from the `.division` reserved region (left column ends 38pt before it, right column starts 26pt after it), so the spread holds unchanged when the Duo bends into a book. Left page: title, Tabs, Privacy. Right page: Appearance, About and a colophon. Where there's no room for a spread (the cover, open upright) the same sections stack in one scrolling column. Settings stay open through fold and unfold.
+**Layout.** On the open display the sheet is a two-page spread whose gutter is the crease. Each column is measured from the `.division` reserved region (left column ends 38pt before it, right column starts 26pt after it), so the spread holds unchanged when the Duo bends into a book. Left page: title, Tabs, Privacy, Pro. Right page: Appearance, About and a colophon. The left page runs taller than the open display, so the sheet scrolls; at rest Pro's label and first row show above the fold. Where there's no room for a spread (the cover, open upright) the same sections stack in one scrolling column. Settings stay open through fold and unfold.
 
 | Section | Control | Default | What it does |
 |---|---|---|---|
 | Tabs | **Archive Today tabs after** 6h · 12h · 24h · Never | 12h | Sets the auto-archive timer (§4.2). A shorter time shelves anything already past it straight away. A copper line under it counts down to the next shelving; Never says Today tabs stay until you close them. |
 | Tabs | **Unload idle tabs** | On | Off keeps every tab's web view in memory. |
 | Appearance | **Theme** Match system · Day · Night | Match system | Day and Night override the system appearance for the whole app, web content included. |
-| Appearance | **True black at night** | Off | At night the desk goes #000. Disabled while the theme is Day. |
+| Appearance | **True black at night** (Pro) | Off | At night the desk goes #000. Disabled while the theme is Day. Free, the row wears a Pro mark and the switch opens the paywall; a purchase made there turns it on. If Pro lapses, the desk returns to its night tone and the setting stays saved. |
 | Privacy | **Block trackers and ads** | On | Adds or removes the bundled rule list on every web view and reloads the pages on screen. The footnote quotes how many domains the list blocks, counted from the bundled file. |
 | Privacy | **Clear browsing data…** | — | Madder, behind a confirmation. Clears what §4.8 lists, then says so in place: "Cleared. Sites will ask you to sign in again." |
+| Pro | **Get Spine Pro…** · **Restore purchases** | — | Shown to free customers. Get Spine Pro opens the RevenueCat paywall, and its footnote quotes the store's own prices. Restore brings back a purchase made with the same Apple Account and says so in place when it finds none. |
+| Pro | **Spine Pro** · **Manage purchase…** | — | Shown to paid customers. Spine Pro reads Active with the renewal or end date, or "Yours for life." Manage purchase opens RevenueCat's Customer Center. |
 | About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone, with no accounts and no telemetry. |
 
 - Settings persist with the rest of local state. Every setting decodes with a default, so a setting added later never wipes saved tabs.
 - Toggles switch on the switch itself, as in iOS Settings. Each segment and swatch is its own accessibility element with a selected trait.
-- Design: Paper page **Settings** (day, night, command-bar entry).
+- Design: Paper page **Settings** (day, night, command-bar entry; Pro: free at rest, free scrolled, paid).
 
 ### Explicitly out of MVP
 

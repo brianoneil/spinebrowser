@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Privacy · Spinebrowser</title>
+<meta name="description" content="What Spinebrowser keeps on your phone, what it sends, and to whom.">
+<style>
+  :root {
+    --desk: #F6F3ED; --page: #FEFDFA; --text: #221D18; --secondary: #605A54;
+    --line: #DEDAD3; --accent: #217969; --accent-strong: #075A4D; --sunken: #ECE9E2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --desk: #14110E; --page: #1E1A16; --text: #EAE7E2; --secondary: #A8A49E;
+      --line: #342F2B; --accent: #75BBAB; --accent-strong: #9AD1C4; --sunken: #0E0C09;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--desk); color: var(--text);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Inter", sans-serif;
+  }
+  main {
+    max-width: 44rem; margin: 2.5rem auto; padding: 3rem 3.25rem 3.5rem;
+    background: var(--page); border-radius: 22px;
+    box-shadow: 0 1px 1px rgba(34, 29, 24, .06), 0 10px 30px rgba(34, 29, 24, .08);
+  }
+  @media (prefers-color-scheme: dark) { main { box-shadow: none; } }
+  @media (max-width: 600px) { main { margin: 0; border-radius: 0; padding: 2rem 1.4rem 2.5rem; } }
+  nav { display: flex; gap: 1.25rem; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; }
+  nav a { color: var(--secondary); text-decoration: none; }
+  nav a[aria-current] { color: var(--accent-strong); }
+  h1 {
+    font: 600 2.5rem/1.1 ui-serif, "New York", "Source Serif 4", Georgia, serif;
+    letter-spacing: -.02em; margin: 1.75rem 0 .5rem;
+  }
+  .meta { color: var(--secondary); font-size: 15px; margin: 0 0 2rem; }
+  .short {
+    background: var(--sunken); border-radius: 14px; padding: 1.1rem 1.3rem; margin: 0 0 2.25rem;
+  }
+  .short p { margin: 0; }
+  h2 {
+    font-size: 13px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+    color: var(--secondary); margin: 2.5rem 0 .75rem; padding-bottom: .6rem; border-bottom: 1px solid var(--line);
+  }
+  p, ul { margin: 0 0 1rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--accent-strong); }
+  strong { font-weight: 600; }
+  code { font: 15px ui-monospace, "SF Mono", Menlo, monospace; }
+  footer {
+    margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--line);
+    font: italic 15px/1.5 ui-serif, "New York", "Source Serif 4", Georgia, serif; color: var(--secondary);
+  }
+</style>
+</head>
+<body>
+<main>
+  <nav aria-label="Legal">
+    <a href="privacy.html" aria-current="page">Privacy</a>
+    <a href="terms.html">Terms</a>
+  </nav>
+
+  <h1>Privacy</h1>
+  <p class="meta">Spinebrowser by Brainivy Labs · Effective November 15, 2026</p>
+
+  <div class="short">
+    <p><strong>The short version.</strong> Your tabs, spaces, history and settings live on your phone. There are no accounts. Spinebrowser sends anonymous usage counts only if you turn that on, and never the sites you visit or what you type. We don't sell data, show ads or track you across other apps.</p>
+  </div>
+
+  <h2>What stays on your phone</h2>
+  <p>Everything you browse with stays in the app's storage on your device:</p>
+  <ul>
+    <li>Your spaces, tabs, pinned tabs, the archive and your settings.</li>
+    <li>Site icons, saved under each site's name.</li>
+    <li>Cookies, site data and caches, kept by Apple's WebKit the way any iPhone browser keeps them.</li>
+  </ul>
+  <p>We never see any of it. <strong>Settings → Clear browsing data</strong> removes cookies, site data, caches, icons and the archive. Deleting the app removes everything.</p>
+
+  <h2>The sites you visit</h2>
+  <p>When you open a page, your phone connects straight to that site, which sees your IP address and whatever the page asks for, as in any browser. Site icons come from the site itself. Each site's own privacy policy covers what it does.</p>
+  <p><strong>Block trackers and ads</strong> is on by default. It uses a list built into the app, so checking a page against it happens on your phone and nothing about it is sent anywhere.</p>
+
+  <h2>Search</h2>
+  <p>When what you type isn't a web address, Spinebrowser sends it to <a href="https://duckduckgo.com/privacy">DuckDuckGo</a> as a search. DuckDuckGo's privacy policy covers that search.</p>
+
+  <h2>Spine Pro purchases</h2>
+  <p>Apple handles payment through your Apple Account. We never see your name, email or card.</p>
+  <p>We use <a href="https://www.revenuecat.com/privacy/">RevenueCat</a> to check whether you have Spine Pro. RevenueCat receives a random ID the app makes for your purchases, your App Store transaction details, the app and iOS version, and your country. It doesn't receive anything you browse. That ID is how <strong>Restore purchases</strong> finds your Pro on a new phone.</p>
+
+  <h2>Usage data, if you share it</h2>
+  <p><strong>Share usage data</strong>, under Settings → Privacy, starts off. While it's off, nothing about how you use Spinebrowser leaves your phone.</p>
+  <p>Turned on, the app sends anonymous counts to <a href="https://posthog.com/privacy">PostHog</a>, which we use to see what people use and what to fix. Each event names an action and nothing more: the app opened; a tab opened, closed or was pinned; a space switched; the Spine changed shape; the Pair opened, closed or swapped; an address or search was entered; tabs were archived or restored; Settings opened, a setting changed, or browsing data was cleared.</p>
+  <p>Each event also carries a random ID for this install, the app version and build, the iOS version, the device model, language, time zone, screen size, whether you're on Wi-Fi or cellular, and whether the phone is folded or open. The device model is the kind of phone, never the name you gave yours.</p>
+  <p><strong>Never sent:</strong> web addresses, site names, page titles, page content, what you search for or type, tab names or space names. The app has no way to attach them; events only carry numbers, on/off values and fixed words like <code>search</code>.</p>
+  <p>Turn sharing off and the app stops sending and throws away its random ID. If you turn it on again later, you start with a new ID that can't be linked to the old one.</p>
+
+  <h2>Feature switches</h2>
+  <p>Spinebrowser checks with PostHog which features are switched on, so we can roll a change out slowly or turn one off without an app update. That check happens whether or not you share usage data. It sends the random install ID, the app version, the iOS version and the device model, and nothing about how you use the browser.</p>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li>We don't sell or share data for advertising.</li>
+    <li>We don't track you across other companies' apps or websites.</li>
+    <li>We don't record your screen, your taps or the pages you view.</li>
+  </ul>
+
+  <h2>Where it goes and how long it stays</h2>
+  <p>PostHog and RevenueCat store their data in the United States. We keep usage counts only as long as they help us improve Spinebrowser. Because they're tied to a random ID and nothing else, we can't pick out one person's events; turning sharing off is how you stop them.</p>
+
+  <h2>Children</h2>
+  <p>Spinebrowser isn't directed at children under 13, and we don't knowingly collect anything from them.</p>
+
+  <h2>Your rights</h2>
+  <p>Depending on where you live, laws like the GDPR and the California Consumer Privacy Act give you rights over personal data, including access and deletion. We hold no account or profile for you, so most of what those rights reach stays on your phone, where you control it. Write to us with any request and we'll help with what we hold.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, we'll update the date at the top. If a change affects what leaves your phone, we'll say so in the app before it takes effect.</p>
+
+  <h2>Contact</h2>
+  <p>Brainivy Labs · <a href="mailto:support@brainivylabs.com">support@brainivylabs.com</a></p>
+
+  <footer>Spinebrowser. Made for the fold.</footer>
+</main>
+</body>
+</html>

@@ -1,14 +1,17 @@
+import RevenueCatUI
 import SwiftUI
 
 @main
 struct SpinebrowserApp: App {
     @State private var store = BrowserStore()
+    @State private var pro = ProStore()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(store)
+                .environment(pro)
                 // Day or Night overrides the system; Match system leaves it alone.
                 .preferredColorScheme(store.settings.theme.colorScheme)
         }
@@ -22,12 +25,18 @@ struct SpinebrowserApp: App {
 /// so iOS lays them out: back/forward, share, Pair up top; the Spine toggle and New tab at the foot.
 struct RootView: View {
     @Environment(BrowserStore.self) private var store
+    @Environment(ProStore.self) private var pro
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var store = store
-        let palette = Palette(isDark: colorScheme == .dark, trueBlack: store.settings.trueBlackAtNight)
+        @Bindable var pro = pro
+        // True black is a Pro feature: the setting stays saved, and applies only while Pro is active.
+        let palette = Palette(
+            isDark: colorScheme == .dark,
+            trueBlack: store.settings.trueBlackAtNight && pro.isPro
+        )
         let spring = Motion.spring(reduce: reduceMotion)
         let runtime = store.focusedRuntime
         let focusedID = store.focusedPane.tabID
@@ -94,6 +103,13 @@ struct RootView: View {
                 .environment(store)
                 .environment(\.palette, palette)
         }
+        // The paywall's layout and products come from the RevenueCat dashboard.
+        .sheet(isPresented: $pro.isPaywallOpen) {
+            PaywallView(displayCloseButton: true)
+                .onPurchaseCompleted { pro.received($0) }
+                .onRestoreCompleted { pro.received($0) }
+        }
+        .presentCustomerCenter(isPresented: $pro.isCustomerCenterOpen)
         .task {
             // Housekeeping: shelve expired Today tabs, give idle tabs' memory back.
             while !Task.isCancelled {

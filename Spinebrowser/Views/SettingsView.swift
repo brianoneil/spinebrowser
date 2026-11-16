@@ -1,3 +1,4 @@
+import RevenueCat
 import SwiftUI
 
 /// Settings own the inner display. The Spine steps aside and the sheet opens as a spread whose
@@ -110,7 +111,7 @@ extension VerticalAlignment {
     static let firstSection = VerticalAlignment(FirstSection.self)
 }
 
-/// Left page: the title, Tabs and Privacy. Right page: Appearance, About and the colophon.
+/// Left page: the title, Tabs, Privacy and Pro. Right page: Appearance, About and the colophon.
 private struct SettingsSpread: View {
     let columns: SpreadColumns
 
@@ -120,6 +121,7 @@ private struct SettingsSpread: View {
                 SettingsTitle()
                 TabsSection().alignmentGuide(.firstSection) { $0[.top] }
                 PrivacySection()
+                ProSection()
             }
             .frame(width: columns.left, alignment: .leading)
 
@@ -140,6 +142,7 @@ private struct SettingsStack: View {
             TabsSection()
             AppearanceSection()
             PrivacySection()
+            ProSection()
             AboutSection()
             Colophon()
         }
@@ -189,6 +192,7 @@ private struct TabsSection: View {
 
 private struct AppearanceSection: View {
     @Environment(BrowserStore.self) private var store
+    @Environment(ProStore.self) private var pro
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -214,12 +218,17 @@ private struct AppearanceSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .bottom) { Hairline() }
 
-            // Day never goes dark, so the option rests there.
+            // Day never goes dark, so the option rests there. It's a Pro feature: locked, the switch
+            // opens the paywall, and a purchase made there turns it on.
             ToggleRow(
                 title: "True black at night",
                 detail: "At night the desk behind your pages goes OLED black.",
-                isOn: store.settingBinding(\.trueBlackAtNight),
-                isEnabled: store.settings.theme != .day
+                isOn: Binding(
+                    get: { store.settings.trueBlackAtNight && pro.isPro },
+                    set: { isOn in pro.requirePro { store.updateSettings { $0.trueBlackAtNight = isOn } } }
+                ),
+                isEnabled: store.settings.theme != .day && pro.isAvailable,
+                isLocked: !pro.isPro
             )
         }
     }
@@ -239,6 +248,47 @@ private struct PrivacySection: View {
             )
             ClearDataRow()
         }
+    }
+}
+
+/// Free, the section sells Pro and restores it. Paid, it says what's active and opens Customer Center.
+/// A build without a store key shows nothing.
+private struct ProSection: View {
+    @Environment(ProStore.self) private var pro
+
+    var body: some View {
+        if pro.isAvailable {
+            SettingsSection(title: "Pro") {
+                if let entitlement = pro.entitlement, entitlement.isActive {
+                    ValueRow(title: "Spine Pro", value: "Active", detail: Self.term(of: entitlement))
+                    ActionRow(title: "Manage purchase…", detail: "Change plan, cancel, or ask for a refund.") {
+                        pro.isCustomerCenterOpen = true
+                    }
+                } else {
+                    ActionRow(title: "Get Spine Pro…", detail: prices) { pro.isPaywallOpen = true }
+                    RestoreRow()
+                }
+            }
+        }
+    }
+
+    /// The store's own price strings, so currency and format follow the customer's storefront.
+    private var prices: String {
+        let parts = [
+            pro.offering?.monthly.map { "\($0.localizedPriceString) a month" },
+            pro.offering?.annual.map { "\($0.localizedPriceString) a year" },
+            pro.offering?.lifetime.map { "\($0.localizedPriceString) once" },
+        ].compactMap { $0 }
+        guard !parts.isEmpty else { return "Monthly, yearly, or pay once and keep it." }
+        return parts.formatted(.list(type: .or)) + "."
+    }
+
+    private static func term(of entitlement: EntitlementInfo) -> String {
+        // The lifetime purchase never expires.
+        guard let end = entitlement.expirationDate else { return "Yours for life." }
+        if entitlement.billingIssueDetectedAt != nil { return "Payment failed. Fix it under Manage purchase." }
+        let date = end.formatted(date: .abbreviated, time: .omitted)
+        return entitlement.willRenew ? "Renews \(date)." : "Ends \(date)."
     }
 }
 
@@ -319,15 +369,20 @@ private struct ToggleRow: View {
     let detail: String
     @Binding var isOn: Bool
     var isEnabled = true
+    /// A Pro feature the customer hasn't paid for. The row wears the word until they do.
+    var isLocked = false
 
     @Environment(\.palette) private var p
 
     var body: some View {
         Toggle(isOn: $isOn) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(isEnabled ? p.text : p.textTertiary)
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(isEnabled ? p.text : p.textTertiary)
+                    if isLocked { ProMark() }
+                }
                 Text(detail)
                     .font(.footnote)
                     .foregroundStyle(isEnabled ? p.textSecondary : p.textTertiary)
@@ -363,6 +418,82 @@ private struct ValueRow: View {
         }
         .accessibilityElement(children: .combine)
         .modifier(RowChrome())
+    }
+}
+
+/// The word on a locked Pro feature: a section-label "Pro" on a slip of soft verdigris.
+private struct ProMark: View {
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        SectionLabel(text: "Pro", color: p.accentStrong)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(p.accentSoft, in: Capsule())
+    }
+}
+
+/// A row you tap. Verdigris ink says so.
+private struct ActionRow: View {
+    let title: String
+    let detail: String
+    let action: () -> Void
+
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(p.accentStrong)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(p.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .modifier(RowChrome())
+    }
+}
+
+/// With no accounts, Restore is how a purchase follows its owner to a new phone.
+private struct RestoreRow: View {
+    @Environment(ProStore.self) private var pro
+    @State private var isRestoring = false
+    @State private var outcome: String?
+
+    var body: some View {
+        ActionRow(
+            title: "Restore purchases",
+            detail: isRestoring
+                ? "Checking your purchases…"
+                : outcome ?? "Paid before? Bring it back to this phone."
+        ) {
+            isRestoring = true
+            Task {
+                do {
+                    // When Pro comes back the section swaps to its paid rows, so only a miss needs words.
+                    if try await pro.restore() == false {
+                        outcome = "No purchase found for this Apple Account."
+                    }
+                } catch {
+                    outcome = Self.message(for: error)
+                }
+                isRestoring = false
+            }
+        }
+        .disabled(isRestoring)
+    }
+
+    private static func message(for error: Error) -> String {
+        switch error as? ErrorCode {
+        case .networkError, .offlineConnectionError: "You're offline. Connect and try again."
+        default: "The store didn't answer. Try again in a minute."
+        }
     }
 }
 

@@ -7,3 +7,6 @@ xcuserdata/
 # Local research scratch and icon drafts (large, not shipped)
 .firecrawl/
 docs/assets/icon-options/
+
+# Local Cloudflare CLI cache
+.cloudflare/
