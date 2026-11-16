@@ -16,6 +16,10 @@ struct PageCard: View {
         }
     }
 
+    private var isCarryingTab: Bool {
+        if case .tab = store.drag { true } else { false }
+    }
+
     private func card(_ pane: Pane) -> some View {
         let tab = pane.tabID.flatMap(store.tab(id:))
         let space = store.space(id: pane.spaceID) ?? store.activeSpace
@@ -32,7 +36,10 @@ struct PageCard: View {
             }
             ZStack(alignment: .top) {
                 if let tab, tab.url != nil {
-                    WebViewHost(tabID: tab.id, engine: store.engine) { store.focus(pane: paneIndex) }
+                    // While a tab is in flight the page steps out of the way, so the drop lands on the window.
+                    WebViewHost(tabID: tab.id, engine: store.engine, isInteractive: !isCarryingTab) {
+                        store.focus(pane: paneIndex)
+                    }
                         // A fresh host after browsing data is cleared, so it builds a fresh web view.
                         .id(store.webGeneration)
                 } else {
@@ -55,6 +62,14 @@ struct PageCard: View {
                 CommandBar().transition(.opacity)
             }
         }
+        .overlay {
+            if isPair, case let .tab(tabID) = store.drag, pane.tabID != tabID {
+                TabDropTarget(label: store.paneIndex(showing: tabID) != nil ? "Swap sides" : "Open here") {
+                    store.drop(tab: $0, onPane: paneIndex)
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: store.drag)
         .clipShape(shape)
         .overlay {
             // Exactly one window is focused, outlined in its binding's ink.
@@ -226,6 +241,7 @@ struct PairBar: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isLinkTargeted = false
 
     var body: some View {
         let ink = space.binding.ink(p)
@@ -245,6 +261,8 @@ struct PairBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Pick the window's tab up by its bar and drop it across to swap sides.
+            .modifier(OptionalTabDrag(tab: tab))
 
             HStack {
                 HStack(spacing: 6) {
@@ -277,9 +295,31 @@ struct PairBar: View {
                 .accessibilityLabel("Window options")
             }
             .padding(.leading, 10)
+
+            // A link carried out of the other window can land on this bar and open here.
+            // The page below stays a drop target of its own, so editors still take images and text.
+            if case let .web(source) = store.drag, source != tab?.id {
+                DropZone(label: "Drop a link to open it here", isTargeted: isLinkTargeted, compact: true)
+                    .padding(4)
+                    .dropDestination(for: URL.self) { urls, _ in
+                        guard let url = urls.first else { return false }
+                        store.drop(link: url, onPane: paneIndex)
+                        return true
+                    } isTargeted: { isLinkTargeted = $0 }
+                    .transition(.opacity)
+            }
         }
         .frame(height: 44)
         .background(space.binding.tint(p))
+        .animation(.easeOut(duration: 0.15), value: store.drag)
+    }
+}
+
+private struct OptionalTabDrag: ViewModifier {
+    let tab: BrowserTab?
+
+    func body(content: Content) -> some View {
+        if let tab { content.tabDragSource(tab) } else { content }
     }
 }
 

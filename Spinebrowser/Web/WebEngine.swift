@@ -25,6 +25,40 @@ final class WebEngine: NSObject {
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         blocker = ContentBlocker(controller: configuration.userContentController, enabled: store.settings.blocksTrackers)
+        // Pages report when a drag of theirs starts and ends, so the other window can offer a drop zone.
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: Self.dragScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
+        configuration.userContentController.add(DragMessageProxy(engine: self), name: Self.dragMessage)
+    }
+
+    private static let dragMessage = "spineDrag"
+    private static let dragScript = """
+    (function () {
+      function post(kind) {
+        try { window.webkit.messageHandlers.\(dragMessage).postMessage(kind); } catch (e) {}
+      }
+      addEventListener('dragstart', function () { post('start'); }, true);
+      addEventListener('dragend', function () { post('end'); }, true);
+    })();
+    """
+
+    fileprivate func pageDrag(_ kind: String, in webView: WKWebView?) {
+        guard let webView, let tabID = tabID(for: webView) else { return }
+        // Off the current turn, in case WebKit calls in mid-update.
+        Task { @MainActor in
+            switch kind {
+            case "start": self.store?.beginDrag(.web(from: tabID))
+            default: self.store?.endDrag(.web(from: tabID))
+            }
+        }
+    }
+
+    /// Drag is off by default on iPhone, and WKWebView follows that default. With two windows
+    /// side by side, images, links and text need to travel between them.
+    private func enableDragging(in view: UIView) {
+        for case let drag as UIDragInteraction in view.interactions { drag.isEnabled = true }
+        view.subviews.forEach(enableDragging)
     }
 
     /// Turns the bundled rule list on or off for every web view, then reloads the given tabs.
@@ -65,6 +99,7 @@ final class WebEngine: NSObject {
         view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanned(_:)))
         views[tabID] = view
         observe(view, tabID: tabID)
+        enableDragging(in: view)
 
         if let state = parked.removeValue(forKey: tabID) {
             view.interactionState = state
@@ -229,6 +264,18 @@ extension WebEngine: WKUIDelegate {
             store?.newTab(url: url)
         }
         return nil
+    }
+}
+
+/// The content controller keeps its handlers alive, so it holds this instead of the engine.
+private final class DragMessageProxy: NSObject, WKScriptMessageHandler {
+    weak var engine: WebEngine?
+
+    init(engine: WebEngine) { self.engine = engine }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let kind = message.body as? String else { return }
+        MainActor.assumeIsolated { engine?.pageDrag(kind, in: message.webView) }
     }
 }
 

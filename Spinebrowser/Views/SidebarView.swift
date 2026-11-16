@@ -92,9 +92,11 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.displayTitle)
+                .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
             }
         }
+        .keepDropTarget(.essential, radius: 18)
         .gesture(spaceSwipe)
     }
 
@@ -102,21 +104,21 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func pinned(_ space: Space) -> some View {
-        let tabs = store.pinned(in: space.id)
-        if !tabs.isEmpty {
+        let entries = store.spineEntries(in: space.id).pinned
+        if !entries.isEmpty || store.drag != nil {
             VStack(alignment: .leading, spacing: 2) {
                 SectionLabel(text: "Pinned", color: space.binding.secondary(p))
                     .padding(.horizontal, 10)
                     .padding(.bottom, 6)
-                ForEach(tabs) { tab in
-                    TabRow(tab: tab, binding: space.binding)
-                }
+                if entries.isEmpty { PinPlaceholder() }
+                ForEach(entries) { row($0, binding: space.binding) }
             }
+            .keepDropTarget(.pinned, radius: 12)
         }
     }
 
     private func today(_ space: Space) -> some View {
-        let tabs = store.today(in: space.id)
+        let entries = store.spineEntries(in: space.id).today
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 SectionLabel(text: "Today", color: space.binding.secondary(p))
@@ -128,16 +130,22 @@ struct SidebarView: View {
             .padding(.bottom, 6)
             .frame(minHeight: 28)
 
-            if tabs.isEmpty {
+            if entries.isEmpty {
                 Text("Nothing open today.")
                     .font(Typeface.footnote)
                     .foregroundStyle(space.binding.secondary(p))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
             }
-            ForEach(tabs) { tab in
-                TabRow(tab: tab, binding: space.binding)
-            }
+            ForEach(entries) { row($0, binding: space.binding) }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ entry: SpineEntry, binding: SpaceBinding) -> some View {
+        switch entry {
+        case .tab(let tab): TabRow(tab: tab, binding: binding)
+        case .pair(let pair): PairRow(pair: pair, binding: binding)
         }
     }
 
@@ -254,11 +262,6 @@ struct TabRow: View {
                     .foregroundStyle(p.text)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if store.isPair, let shownIn {
-                    Text(shownIn == 0 ? "Left" : "Right")
-                        .font(Typeface.sectionLabel)
-                        .foregroundStyle(binding.ink(p))
-                }
             }
             .padding(.vertical, 9)
             .padding(.horizontal, 10)
@@ -280,6 +283,7 @@ struct TabRow: View {
         .offset(x: swipe)
         .opacity(1 - min(0.6, Double(-swipe) / 200))
         .simultaneousGesture(closeSwipe)
+        .tabDragSource(tab)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .accessibilityAction(named: "Close") { store.close(tab.id) }
@@ -335,8 +339,8 @@ struct TabMenu: View {
 
         Divider()
         if store.isPair {
-            Button("Open on the left", systemImage: "rectangle.lefthalf.inset.filled") { store.select(tab.id, inPane: 0) }
-            Button("Open on the right", systemImage: "rectangle.righthalf.inset.filled") { store.select(tab.id, inPane: 1) }
+            Button("Open on the left", systemImage: "rectangle.lefthalf.inset.filled") { store.place(tab.id, inPane: 0) }
+            Button("Open on the right", systemImage: "rectangle.righthalf.inset.filled") { store.place(tab.id, inPane: 1) }
         } else if store.focusedPane.tabID != tab.id {
             Button("Open in a Pair", systemImage: "rectangle.split.2x1") { store.openPair(with: tab.id) }
         }

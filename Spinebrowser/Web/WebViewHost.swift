@@ -5,6 +5,8 @@ import WebKit
 struct WebViewHost: UIViewRepresentable {
     let tabID: UUID
     let engine: WebEngine
+    /// Off while something is carried over the window, so the drop reaches the window, not the page.
+    var isInteractive = true
     var onTouch: () -> Void = {}
 
     func makeUIView(context: Context) -> WebContainerView {
@@ -13,6 +15,7 @@ struct WebViewHost: UIViewRepresentable {
 
     func updateUIView(_ container: WebContainerView, context: Context) {
         container.onTouch = onTouch
+        container.isUserInteractionEnabled = isInteractive
         container.show(engine.webView(for: tabID))
     }
 }
