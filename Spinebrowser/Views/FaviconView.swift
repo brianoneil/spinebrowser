@@ -27,6 +27,14 @@ struct FaviconView: View {
         self.size = size
     }
 
+    init(visit: Visit, size: CGFloat = 20) {
+        host = visit.host
+        title = visit.displayTitle
+        tileHex = nil
+        glyph = nil
+        self.size = size
+    }
+
     private var letter: String {
         if let glyph { return glyph }
         // The host's letter, so "Home - Kinfolk" still reads as K.
