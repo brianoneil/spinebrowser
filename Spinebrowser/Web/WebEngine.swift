@@ -223,6 +223,23 @@ final class WebEngine: NSObject {
 }
 
 extension WebEngine: WKNavigationDelegate {
+    /// Schemes a web view shows itself. Anything else (tel, mailto, sms, maps, another app's
+    /// scheme) belongs to some other app.
+    static let pageSchemes: Set<String> = ["http", "https", "about", "blob", "data", "javascript"]
+
+    static func isPage(_ url: URL) -> Bool {
+        url.scheme.map { pageSchemes.contains($0.lowercased()) } ?? true
+    }
+
+    /// Hands a link the web can't show to the app that handles it. Frames inside a page can't,
+    /// so an ad's iframe can't throw you into another app.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        guard let url = navigationAction.request.url, !Self.isPage(url) else { return .allow }
+        if navigationAction.targetFrame?.isMainFrame ?? true {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
+        return .cancel
+    }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         // Transparent until the first page commits, so a loading tab shows the card instead of
         // a white flash. After that WebKit must paint the page canvas itself: a site that sets
@@ -265,8 +282,11 @@ extension WebEngine: WKUIDelegate {
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url {
+        guard let url = navigationAction.request.url else { return nil }
+        if Self.isPage(url) {
             library?.pageOpened(url, from: tabID(for: webView))
+        } else {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         return nil
     }

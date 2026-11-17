@@ -40,6 +40,8 @@ final class BrowserStore {
     /// The Sidebar a window narrower than the Sidebar needs gave up, to come back when it widens.
     @ObservationIgnored private var spineBeforeNarrow: SpineState?
     @ObservationIgnored private var addressFade: Task<Void, Never>?
+    /// A fresh window raises the command bar once it settles. A link arriving first calls it off.
+    @ObservationIgnored private var freshPrompt: Task<Void, Never>?
 
     init(library: Library, id: UUID, state: WindowSnapshot) {
         self.library = library
@@ -303,9 +305,23 @@ final class BrowserStore {
         newTab()
         // The keyboard waits for the window to finish opening, rather than rise mid-animation.
         isCommandBarOpen = false
-        Task { [weak self] in
+        freshPrompt = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
             self?.isCommandBarOpen = true
+        }
+    }
+
+    /// A link handed over by another app. It gets a tab of its own, so the page you were on stays.
+    /// A blank tab still waiting for an address takes it instead of being left behind empty.
+    func openIncoming(_ url: URL) {
+        freshPrompt?.cancel()
+        freshPrompt = nil
+        isCommandBarOpen = false
+        if let tab = focusedTab, currentURL(for: tab) == nil {
+            open(url)
+        } else {
+            newTab(url: url)
         }
     }
 
