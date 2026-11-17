@@ -143,6 +143,16 @@ enum NavigationInput {
         return components?.url
     }
 
+    /// The first web link in some text: a bare address, or one inside a sentence.
+    static func firstLink(in text: String) -> URL? {
+        if let url = explicitURL(text) { return url }
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let range = NSRange(text.startIndex..., in: text)
+        return detector?.matches(in: text, range: range).lazy
+            .compactMap(\.url)
+            .first { ["http", "https"].contains($0.scheme?.lowercased()) }
+    }
+
     static func explicitURL(_ text: String) -> URL? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains(" ") else { return nil }

@@ -27,6 +27,8 @@ final class Library {
     private(set) var shownByWindow: [UUID: [UUID]] = [:]
     /// Tabs closed this session, most recent last, so ⇧⌘T can bring them back.
     private(set) var recentlyClosed: [ArchivedTab] = []
+    /// Pages visited, per Space. Kept in its own file.
+    private(set) var history = HistoryPersistence.load()
 
     @ObservationIgnored private var windows: [UUID: WeakWindow] = [:]
     /// Window states kept on disk, by window. A window that comes back picks up its own.
@@ -35,6 +37,10 @@ final class Library {
     @ObservationIgnored private var unclaimedWindow: WindowSnapshot?
     @ObservationIgnored private(set) var lastActiveWindowID: UUID?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var historySaveTask: Task<Void, Never>?
+    /// Tabs told to load an address, whose first page counts as a visit. A tab that reloads
+    /// its saved page at launch isn't in here, so a relaunch doesn't count as visiting every tab.
+    @ObservationIgnored private var expectsVisit: Set<UUID> = []
     @ObservationIgnored private(set) lazy var engine = WebEngine(library: self)
     let favicons = FaviconStore()
 
@@ -178,6 +184,7 @@ final class Library {
     func insertTab(url: URL?, title: String = "", spaceID: UUID) -> BrowserTab {
         let tab = BrowserTab(url: url, title: title, tier: .today, spaceID: spaceID)
         tabs.insert(tab, at: tabs.firstIndex { $0.tier == .today } ?? tabs.count)
+        if url != nil { expectsVisit.insert(tab.id) }
         scheduleSave()
         return tab
     }
@@ -185,6 +192,7 @@ final class Library {
     func setURL(_ url: URL, for tabID: UUID) {
         guard let i = tabs.firstIndex(where: { $0.id == tabID }), tabs[i].url == nil else { return }
         tabs[i].url = url
+        expectsVisit.insert(tabID)
         scheduleSave()
     }
 
@@ -415,6 +423,8 @@ final class Library {
         engine.discardAll()
         runtime.removeAll()
         archive.removeAll()
+        history.removeAll()
+        HistoryPersistence.save(history)
         favicons.clear()
         webGeneration += 1
         saveNow()
@@ -424,8 +434,10 @@ final class Library {
 
     func webDidUpdate(_ tabID: UUID, title: String?, state: TabRuntime) {
         guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let previous = runtime[tabID]?.currentURL
         // A new page brings the pill back so you can see where you landed.
-        if runtime[tabID]?.currentURL != state.currentURL { setAddressHidden(false, for: tabID) }
+        if previous != state.currentURL { setAddressHidden(false, for: tabID) }
+        recordVisit(tabID, from: previous, title: title, state: state)
         if runtime[tabID] != state { runtime[tabID] = state }
         var changed = false
         if let title, !title.isEmpty, tabs[i].title != title {
@@ -438,6 +450,22 @@ final class Library {
             changed = true
         }
         if changed { scheduleSave() }
+    }
+
+    /// A new address in a tab is a visit when you got there: a link, back or forward, or an
+    /// address you gave it. A tab coming back with the page it already had is not.
+    private func recordVisit(_ tabID: UUID, from previous: URL?, title: String?, state: TabRuntime) {
+        guard let url = state.currentURL, let tab = tab(id: tabID),
+              let spaceID = tab.spaceID ?? window(showing: tabID)?.focusedPane.spaceID else { return }
+        // The address can land before the page's title does. A title that hasn't changed
+        // still belongs to the page before, so it waits for the next update.
+        let freshTitle = title.flatMap { $0.isEmpty || $0 == tab.title ? nil : $0 }
+        if url != previous, previous != nil || expectsVisit.remove(tabID) != nil {
+            history.record(url, title: freshTitle ?? "", spaceID: spaceID, tabID: tabID)
+            scheduleHistorySave()
+        } else if url == previous, let freshTitle, history.setTitle(freshTitle, for: url, spaceID: spaceID) {
+            scheduleHistorySave()
+        }
     }
 
     /// Scrolling a page hides or shows the pill in the window showing it.
@@ -473,6 +501,17 @@ final class Library {
     func saveNow() {
         saveTask?.cancel()
         Persistence.save(snapshot())
+        historySaveTask?.cancel()
+        HistoryPersistence.save(history)
+    }
+
+    private func scheduleHistorySave() {
+        historySaveTask?.cancel()
+        historySaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self else { return }
+            HistoryPersistence.save(self.history)
+        }
     }
 
     private func snapshot() -> Snapshot {

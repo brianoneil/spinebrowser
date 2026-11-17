@@ -126,8 +126,17 @@ Arc's Cmd-T, reimagined for touch:
 
 - Floating, centered panel (Zen floating-URL-bar style), summoned by: tap on the collapsed URL pill, swipe-down on a pane's top edge, or hardware keyboard Cmd-L.
 - Single field for: URL entry, web search (configurable engine), open-tab search/switching, archive search, and **commands** ("pin tab", "move to space", "split", "archive all today tabs").
-- Fuzzy matching across tabs/history; shows which pane a result will open in (defaults to active pane).
-- **Ranking.** Open tabs lead, so you switch instead of duplicating. A command whose name contains what you typed as one run ("set" → Settings) outranks tabs that only match letter by letter, and it outranks the web-search fallback. Return runs the top result.
+- Fuzzy matching across tabs and history; shows which pane a result will open in (defaults to active pane).
+- **Opening the bar.** Before you type, the bar shows where you're likely headed. A link on the clipboard gets its own row, **Go to copied link**. Below it come open tabs, then **Frequent** (sites you keep coming back to) and **Recent** (pages you were on lately that aren't open now), then a few commands. Anything already open as a tab switches to it instead of opening a copy.
+- **Top hit.** Type an address and it's the first, highlighted row, every time: a quiet arrow, then the address a size up from the rows around it. The destination is the point, so no "Go to" label competes with it; in a Pair the subtitle names the window it lands in. Return takes you there, even when an open tab's letters happen to line up.
+- **The field finishes the address.** Type the start of a place you've been and the field fills in the rest, tinted to match the top hit, with the cursor waiting after what you typed: "nyt" → nyt*imes.com*, "wik" → wik*ipedia.org* (any part of the host can start it), "nytimes.com/se" → a section you read once you've typed the slash. Keep typing and the suggestion follows along; the first Backspace takes back only the suggestion, and nothing fills back in until you type again; moving the cursor into it keeps it; Return goes where the field says, and the top hit row shows the same place.
+  - **What can complete.** An open tab in this Space or Essentials, which switches to that tab instead of opening a copy. Otherwise a site you've visited twice, or once today or within the hour, so a site you just found completes the second time you reach for it. The search engine never completes.
+  - **Commands keep their names.** A command whose name starts with what you typed beats history, so "set" still runs Settings. An open tab still completes, since switching to it is the point.
+  - Typing an address in full completes nothing: what you typed is the top hit, as above.
+- **Ranking.** After the top hit, open tabs lead, so you switch instead of duplicating. A command whose name contains what you typed as one run ("set" → Settings) outranks tabs that only match letter by letter, and it outranks the web-search fallback. History matches follow, the sites you visit most first; they need what you typed as one run, since letters scattered through a long history match everything. Return runs the top result.
+- **Visits count when you go somewhere.** A link, back or forward, or an address you typed counts as a visit. A tab reloading its page at launch doesn't. Each page keeps its visit count, first and last visit, and its last ten visit times, and recent visits weigh more, so a site you open daily beats one you opened fifty times last year. One visit isn't a habit: Frequent needs two. The search engine never counts as Frequent.
+- **Clipboard.** iOS can tell whether the clipboard holds a link without reading it, so the row shows with no alert. Tapping it reads the link, and iOS may ask once to allow pasting.
+- Design: Paper page **Modes v2**, boards 05 (Glance & command bar) and 14 (history & completion: the empty bar, then typing "nyt").
 
 ### 4.6 Glance (P1)
 
@@ -145,9 +154,9 @@ Zen's Glance, touch-native:
 ### 4.8 Privacy & blocking (P0)
 
 - Built-in tracker/ad blocking (WebKit content-blocker ruleset, ship a maintained list). On by default; Settings can turn it off, and pages on screen reload so the change shows at once.
-- Clear browsing data from Settings: cookies, site data, caches, favicons and the archive. Open tabs stay and reload fresh, so no signed-in page lingers.
+- Clear browsing data from Settings: cookies, site data, caches, favicons, history and the archive. Open tabs stay and reload fresh, so no signed-in page lingers.
 - Auto-deny cookie-consent banners where possible (Arc Search behavior).
-- Per-space history; archive excluded from history suggestions by default.
+- Per-space history, kept on this device in its own file. When what you type matches a page in the archive, it shows under Archive, not in History too.
 - No accounts, no telemetry in MVP. Local-only state. (Sync is §10.)
 
 ### 4.9 Continuity & posture handling (P0)
@@ -296,7 +305,7 @@ Consequences:
 Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1S8F2Q):
 
 - **Design Language:** Principles · 01 Color (the reading room, Bindings) · 01b Light & dark · 02 Typography · 03 Space & motion · 04 Device & system UI · 05 The Spine (all four states).
-- **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright · 11 Pairs kept, one row in the Spine · 12 Drag a tab onto a window · 13 Drag a link across the Pair.
+- **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright · 11 Pairs kept, one row in the Spine · 12 Drag a tab onto a window · 13 Drag a link across the Pair · 14 Command bar, history & completion.
 - **Settings:** 00 cover · 01 Settings, day, open flat · 02 Settings, night, open flat · 03 Open from the command bar.
 - **iPad — no fold:** 01 Landscape · Sidebar · 02 The Pair, no crease · 03 Portrait · Spines · 04 Stage Manager, two windows · 05 Keyboard, menu bar, pointer.
 - **Modes v1:** superseded. It used a two-screen model and a standard iPhone status bar.
