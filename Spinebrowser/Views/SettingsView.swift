@@ -517,7 +517,7 @@ private struct ClearDataRow: View {
                     .foregroundStyle(p.danger)
                 Text(didClear
                      ? "Cleared. Sites will ask you to sign in again."
-                     : "Cookies, site data, caches and the archive. Open tabs stay.")
+                     : "Cookies, site data, caches, history and the archive. Open tabs stay.")
                     .font(.footnote)
                     .foregroundStyle(p.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -539,7 +539,7 @@ private struct ClearDataRow: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This signs you out of every site and empties the archive. Open tabs stay and reload fresh.")
+            Text("This signs you out of every site and empties your history and the archive. Open tabs stay and reload fresh.")
         }
     }
 }
