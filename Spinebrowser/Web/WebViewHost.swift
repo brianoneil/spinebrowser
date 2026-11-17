@@ -7,6 +7,8 @@ struct WebViewHost: UIViewRepresentable {
     let engine: WebEngine
     /// Off while something is carried over the window, so the drop reaches the window, not the page.
     var isInteractive = true
+    /// Whether this window still shows the tab, asked before taking its page back.
+    var isWanted: () -> Bool = { true }
     var onTouch: () -> Void = {}
 
     func makeUIView(context: Context) -> WebContainerView {
@@ -15,6 +17,7 @@ struct WebViewHost: UIViewRepresentable {
 
     func updateUIView(_ container: WebContainerView, context: Context) {
         container.onTouch = onTouch
+        container.isWanted = isWanted
         container.isUserInteractionEnabled = isInteractive
         container.show(engine.webView(for: tabID))
     }
@@ -22,6 +25,7 @@ struct WebViewHost: UIViewRepresentable {
 
 final class WebContainerView: UIView, UIGestureRecognizerDelegate {
     var onTouch: () -> Void = {}
+    var isWanted: () -> Bool = { true }
     private weak var current: WKWebView?
 
     override init(frame: CGRect) {
@@ -31,6 +35,28 @@ final class WebContainerView: UIView, UIGestureRecognizerDelegate {
         tap.cancelsTouchesInView = false
         tap.delegate = self
         addGestureRecognizer(tap)
+        // A page shows in one window at a time. Another window may have held it while this one
+        // was in the background; coming back, this window takes its page back.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(sceneActivated(_:)), name: UIScene.didActivateNotification, object: nil
+        )
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        reclaim()
+    }
+
+    @objc private func sceneActivated(_ note: Notification) {
+        guard let scene = note.object as? UIWindowScene, scene === window?.windowScene else { return }
+        reclaim()
+    }
+
+    private func reclaim() {
+        guard window != nil, let current, current.superview !== self, isWanted() else { return }
+        current.removeFromSuperview()
+        current.frame = bounds
+        addSubview(current)
     }
 
     @available(*, unavailable)

@@ -1,34 +1,34 @@
 import Foundation
 import Observation
 
-/// Single source of truth for spaces, tabs, panes and the Spine. Views render onto it;
-/// no tab state lives in a view.
+/// One window's place in the library: its panes, its Spine, its Pair, its open sheets.
+/// Spaces, tabs and Pairs themselves live in the shared `Library`; views read them through here,
+/// so no tab state lives in a view and no view needs to know which window it's in.
 @MainActor
 @Observable
 final class BrowserStore {
-    private(set) var spaces: [Space] = []
-    private(set) var tabs: [BrowserTab] = []
-    private(set) var archive: [ArchivedTab] = []
-    private(set) var panes: [Pane] = []
+    let id: UUID
+    let library: Library
+
+    private(set) var panes: [Pane] = [] {
+        didSet {
+            // A window coming back doesn't claim its tabs until the library knows it, so it yields
+            // to the window already showing them.
+            guard isRegistered, panes.map(\.tabID) != oldValue.map(\.tabID) else { return }
+            library.window(self, shows: shownTabIDs)
+        }
+    }
+    /// Set once the library has settled what this window may show.
+    @ObservationIgnored var isRegistered = false
     private(set) var focusedPaneIndex = 0
     private(set) var spineState: SpineState = .sidebar
-    /// Nil turns auto-archive off.
-    private(set) var archiveAfterHours: Double? = 12
-    private(set) var settings = BrowserSettings()
+    /// The Pair on screen. Set exactly when two windows show, and their tabs match it.
+    private(set) var shownPairID: UUID?
 
-    var runtime: [UUID: TabRuntime] = [:]
     var isCommandBarOpen = false
     var isSidebarOverlayOpen = false
     var isArchiveOpen = false
     var isSettingsOpen = false
-    /// Bumps when every web view is thrown away, so the hosts on screen build fresh ones.
-    private(set) var webGeneration = 0
-    /// What a finger is carrying right now, so the windows can show where it lands.
-    private(set) var drag: DragCargo?
-    /// Two tabs that travel as one. Each waits in the Spine until either of its tabs is picked.
-    private(set) var pairs: [TabPair] = []
-    /// The Pair on screen. Set exactly when two windows show, and their tabs match it.
-    private(set) var shownPairID: UUID?
     /// The URL pill recedes while you read down a page, or when left alone, and comes back on summon.
     private(set) var isAddressHidden = false {
         didSet { isAddressHidden ? addressFade?.cancel() : scheduleAddressFade() }
@@ -37,86 +37,89 @@ final class BrowserStore {
     @ObservationIgnored private var lastTabBySpace: [UUID: UUID] = [:]
     @ObservationIgnored private var lastStrip: SpineState = .spines
     @ObservationIgnored private var spineBeforePair: SpineState?
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// The Sidebar a window narrower than the Sidebar needs gave up, to come back when it widens.
+    @ObservationIgnored private var spineBeforeNarrow: SpineState?
     @ObservationIgnored private var addressFade: Task<Void, Never>?
-    @ObservationIgnored private(set) lazy var engine = WebEngine(store: self)
-    let favicons = FaviconStore()
 
-    init() {
-        if let snapshot = Persistence.load() {
-            apply(snapshot)
-        } else {
-            seed()
-        }
-        sweepArchive()
+    init(library: Library, id: UUID, state: WindowSnapshot) {
+        self.library = library
+        self.id = id
+        apply(state)
         scheduleAddressFade()
     }
 
-    // MARK: Lookups
+    // MARK: Shared state, read through the window
 
-    func tab(id: UUID) -> BrowserTab? { tabs.first { $0.id == id } }
-    func space(id: UUID?) -> Space? { spaces.first { $0.id == id } }
+    var spaces: [Space] { library.spaces }
+    var tabs: [BrowserTab] { library.tabs }
+    var archive: [ArchivedTab] { library.archive }
+    var pairs: [TabPair] { library.pairs }
+    var settings: BrowserSettings { library.settings }
+    var archiveAfterHours: Double? { library.archiveAfterHours }
+    var runtime: [UUID: TabRuntime] { library.runtime }
+    var webGeneration: Int { library.webGeneration }
+    var drag: DragCargo? { library.drag }
+    var engine: WebEngine { library.engine }
+    var favicons: FaviconStore { library.favicons }
+
+    func tab(id: UUID) -> BrowserTab? { library.tab(id: id) }
+    func space(id: UUID?) -> Space? { library.space(id: id) }
+    var essentials: [BrowserTab] { library.essentials }
+    func pinned(in spaceID: UUID) -> [BrowserTab] { library.pinned(in: spaceID) }
+    func today(in spaceID: UUID) -> [BrowserTab] { library.today(in: spaceID) }
+    func currentURL(for tab: BrowserTab) -> URL? { library.currentURL(for: tab) }
+    func pair(id: UUID?) -> TabPair? { library.pair(id: id) }
+    func pair(containing tabID: UUID) -> TabPair? { library.pair(containing: tabID) }
+    func spineEntries(in spaceID: UUID) -> (pinned: [SpineEntry], today: [SpineEntry]) {
+        library.spineEntries(in: spaceID)
+    }
+
+    // MARK: Lookups
 
     var isPair: Bool { panes.count == 2 }
     var focusedPane: Pane { panes[min(focusedPaneIndex, panes.count - 1)] }
     var activeSpace: Space { space(id: focusedPane.spaceID) ?? spaces[0] }
     var focusedTab: BrowserTab? { focusedPane.tabID.flatMap(tab(id:)) }
     var focusedRuntime: TabRuntime { focusedPane.tabID.flatMap { runtime[$0] } ?? TabRuntime() }
-
-    var essentials: [BrowserTab] { tabs.filter { $0.tier == .essential } }
-    func pinned(in spaceID: UUID) -> [BrowserTab] { tabs.filter { $0.tier == .pinned && $0.spaceID == spaceID } }
-    func today(in spaceID: UUID) -> [BrowserTab] { tabs.filter { $0.tier == .today && $0.spaceID == spaceID } }
+    var shownTabIDs: [UUID] { panes.compactMap(\.tabID) }
 
     /// Which pane shows this tab, if any.
     func paneIndex(showing tabID: UUID) -> Int? { panes.firstIndex { $0.tabID == tabID } }
 
-    func currentURL(for tab: BrowserTab) -> URL? { runtime[tab.id]?.currentURL ?? tab.url }
-
-    func pair(id: UUID?) -> TabPair? { pairs.first { $0.id == id } }
-    func pair(containing tabID: UUID) -> TabPair? { pairs.first { $0.tabIDs.contains(tabID) } }
     var shownPair: TabPair? { pair(id: shownPairID) }
-    /// Where the divider of the Pair on screen rests, as a share of the page row. Nil is the fold.
+    /// Where the divider of the Pair on screen rests, as a share of the page row. Nil is the middle,
+    /// which on the Duo is the fold.
     var pairSplit: Double? { shownPair?.split }
-
-    /// A space's Pinned and Today, with each Pair standing in once for its tabs, where its first tab sits.
-    func spineEntries(in spaceID: UUID) -> (pinned: [SpineEntry], today: [SpineEntry]) {
-        var seen = Set<UUID>()
-        func entries(_ list: [BrowserTab]) -> [SpineEntry] {
-            list.compactMap { tab in
-                guard let pair = pair(containing: tab.id) else { return .tab(tab) }
-                return seen.insert(pair.id).inserted ? .pair(pair) : nil
-            }
-        }
-        let pinned = entries(pinned(in: spaceID))
-        return (pinned, entries(today(in: spaceID)))
-    }
 
     // MARK: Selection
 
     /// Shows a tab. A tab in a Pair brings its Pair; any other tab leaves the Pair on screen,
-    /// which waits in the Spine as it was.
+    /// which waits in the Spine as it was. A tab another window shows moves here.
     func select(_ tabID: UUID) {
         guard let tab = tab(id: tabID) else { return }
         if let pair = pair(containing: tabID) {
             if shownPairID == pair.id {
                 focusedPaneIndex = pair.tabIDs.firstIndex(of: tabID) ?? focusedPaneIndex
             } else {
-                panes.compactMap(\.tabID).forEach(touch)
+                shownTabIDs.forEach(library.touch)
                 show(pair, focusing: tabID)
             }
         } else if isPair {
-            panes.compactMap(\.tabID).forEach(touch)
+            shownTabIDs.forEach(library.touch)
             showSingle(tabID, spaceID: tab.spaceID ?? focusedPane.spaceID)
         } else {
-            if let leaving = panes[0].tabID, leaving != tabID { touch(leaving) }
-            panes[0].tabID = tabID
-            if let spaceID = tab.spaceID { panes[0].spaceID = spaceID }
+            if let leaving = panes[0].tabID, leaving != tabID { library.touch(leaving) }
+            var pane = panes[0]
+            pane.tabID = tabID
+            if let spaceID = tab.spaceID { pane.spaceID = spaceID }
+            panes[0] = pane
         }
-        touch(tabID)
+        library.touch(tabID)
         if let spaceID = tab.spaceID { lastTabBySpace[spaceID] = tabID }
         isSidebarOverlayOpen = false
         isAddressHidden = false
-        scheduleSave()
+        library.windowBecameActive(id)
+        library.scheduleSave()
     }
 
     /// Puts a tab in one window of the Pair on screen. The tab it replaces steps out of the Pair
@@ -137,26 +140,28 @@ final class BrowserStore {
             return
         }
         // A tab can only belong to one Pair, so the one it came from comes apart.
-        if let previous = pair(containing: tabID) { pairs.removeAll { $0.id == previous.id } }
-        touch(shown.tabIDs[index])
-        updateShownPair { $0.tabIDs[index] = tabID }
-        panes[index].tabID = tabID
-        if let spaceID = tab.spaceID { panes[index].spaceID = spaceID }
+        if let previous = pair(containing: tabID) { library.removePair(previous.id) }
+        library.touch(shown.tabIDs[index])
+        library.updatePair(shown.id) { $0.tabIDs[index] = tabID }
+        var pane = panes[index]
+        pane.tabID = tabID
+        if let spaceID = tab.spaceID { pane.spaceID = spaceID }
+        panes[index] = pane
         focusedPaneIndex = index
-        touch(tabID)
+        library.touch(tabID)
         if let spaceID = tab.spaceID { lastTabBySpace[spaceID] = tabID }
         isSidebarOverlayOpen = false
-        scheduleSave()
+        library.scheduleSave()
     }
 
     /// Two windows, one per tab of the Pair.
     private func show(_ pair: TabPair, focusing tabID: UUID?) {
         let wasPair = isPair
         let fallbackSpace = focusedPane.spaceID
-        panes = pair.tabIDs.map { Pane(tabID: $0, spaceID: tab(id: $0)?.spaceID ?? fallbackSpace) }
         shownPairID = pair.id
         focusedPaneIndex = tabID.flatMap { pair.tabIDs.firstIndex(of: $0) } ?? 1
-        pair.tabIDs.forEach(touch)
+        panes = pair.tabIDs.map { Pane(tabID: $0, spaceID: tab(id: $0)?.spaceID ?? fallbackSpace) }
+        pair.tabIDs.forEach(library.touch)
         if !wasPair, spineState == .sidebar || spineState == .spines {
             // The Spine drops to the Rail so both pages have room.
             spineBeforePair = spineState
@@ -167,9 +172,9 @@ final class BrowserStore {
     /// One window. Whatever Pair was on screen stays in the Spine.
     private func showSingle(_ tabID: UUID?, spaceID: UUID) {
         let wasPair = isPair
-        panes = [Pane(tabID: tabID, spaceID: spaceID)]
         shownPairID = nil
         focusedPaneIndex = 0
+        panes = [Pane(tabID: tabID, spaceID: spaceID)]
         guard wasPair else { return }
         isSidebarOverlayOpen = false
         isAddressHidden = false
@@ -179,20 +184,71 @@ final class BrowserStore {
         }
     }
 
-    private func updateShownPair(_ change: (inout TabPair) -> Void) {
-        guard let i = pairs.firstIndex(where: { $0.id == shownPairID }) else { return }
-        change(&pairs[i])
-    }
-
     func focus(pane index: Int) {
+        library.windowBecameActive(id)
         guard panes.indices.contains(index), focusedPaneIndex != index else { return }
         focusedPaneIndex = index
-        scheduleSave()
+        library.scheduleSave()
     }
 
-    private func touch(_ tabID: UUID) {
-        guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        tabs[i].lastActiveAt = .now
+    /// Moves focus to the other window of the Pair.
+    func focusOtherPane() {
+        guard isPair else { return }
+        focus(pane: 1 - focusedPaneIndex)
+    }
+
+    // MARK: Other windows
+
+    /// Another window took these tabs. Whatever showed them here falls back to the most recent tab
+    /// that isn't on screen anywhere.
+    func release(_ taken: Set<UUID>) {
+        guard shownTabIDs.contains(where: taken.contains) else { return }
+        if isPair {
+            showSingle(nil, spaceID: focusedPane.spaceID)
+        } else {
+            var pane = panes[0]
+            pane.tabID = nil
+            panes[0] = pane
+        }
+        if let next = promotedTab(for: 0) { select(next.id) }
+    }
+
+    /// After a shared change, makes sure what this window shows still exists: a closed tab gives way,
+    /// a Pair taken apart leaves the focused window's tab.
+    func reconcile() {
+        if let pairID = shownPairID {
+            if let pair = pair(id: pairID), pair.tabIDs.allSatisfy({ tab(id: $0) != nil }) {
+                if pair.tabIDs != shownTabIDs {
+                    panes = pair.tabIDs.map { tabID in
+                        panes.first { $0.tabID == tabID } ?? Pane(tabID: tabID, spaceID: tab(id: tabID)?.spaceID ?? focusedPane.spaceID)
+                    }
+                }
+            } else {
+                let survivors = panes.filter { $0.tabID.flatMap(tab(id:)) != nil }
+                let kept = survivors.first { $0.id == focusedPane.id } ?? survivors.first
+                showSingle(kept?.tabID, spaceID: kept?.spaceID ?? focusedPane.spaceID)
+            }
+        }
+        if !isPair, let tabID = panes[0].tabID, tab(id: tabID) == nil {
+            var pane = panes[0]
+            pane.tabID = nil
+            panes[0] = pane
+            if let next = promotedTab(for: 0) { select(next.id) }
+        }
+        lastTabBySpace = lastTabBySpace.filter { tab(id: $0.value) != nil }
+    }
+
+    /// A tab moved to another space. The Pair keeps its tab, in the new space; a single page gives way.
+    func tabMoved(_ tabID: UUID, to spaceID: UUID) {
+        guard let index = paneIndex(showing: tabID) else { return }
+        if isPair {
+            panes[index].spaceID = spaceID
+        } else {
+            var pane = panes[0]
+            pane.tabID = nil
+            panes[0] = pane
+            if let next = promotedTab(for: 0) { select(next.id) }
+        }
     }
 
     // MARK: Spaces
@@ -200,7 +256,7 @@ final class BrowserStore {
     /// Changing space leaves the Pair on screen and picks up where that space was left, Pair and all.
     func switchSpace(to spaceID: UUID) {
         guard space(id: spaceID) != nil, focusedPane.spaceID != spaceID else { return }
-        panes.compactMap(\.tabID).forEach(touch)
+        shownTabIDs.forEach(library.touch)
         let remembered = lastTabBySpace[spaceID].flatMap(tab(id:))
         let candidate = remembered ?? today(in: spaceID).first ?? pinned(in: spaceID).first
         if isPair {
@@ -209,7 +265,7 @@ final class BrowserStore {
             panes[0] = Pane(tabID: nil, spaceID: spaceID)
         }
         if let candidate { select(candidate.id) }
-        scheduleSave()
+        library.scheduleSave()
     }
 
     func stepSpace(by delta: Int) {
@@ -219,6 +275,12 @@ final class BrowserStore {
         switchSpace(to: spaces[next].id)
     }
 
+    /// The space at this place in the order, counting from zero.
+    func switchSpace(at index: Int) {
+        guard spaces.indices.contains(index) else { return }
+        switchSpace(to: spaces[index].id)
+    }
+
     // MARK: Tabs
 
     /// A new tab shows on its own, leaving any Pair on screen. Given a window of the Pair, it goes
@@ -226,10 +288,7 @@ final class BrowserStore {
     @discardableResult
     func newTab(url: URL? = nil, title: String = "", inPane requested: Int? = nil) -> BrowserTab {
         let index = min(requested ?? focusedPaneIndex, panes.count - 1)
-        let tab = BrowserTab(url: url, title: title, tier: .today, spaceID: panes[index].spaceID)
-        // Most recent first.
-        let insertAt = tabs.firstIndex { $0.tier == .today } ?? tabs.count
-        tabs.insert(tab, at: insertAt)
+        let tab = library.insertTab(url: url, title: title, spaceID: panes[index].spaceID)
         if let requested, isPair {
             place(tab.id, inPane: requested)
         } else {
@@ -237,6 +296,17 @@ final class BrowserStore {
         }
         if url == nil { isCommandBarOpen = true }
         return tab
+    }
+
+    /// A window opened just now starts on a new tab, ready to type.
+    func startFresh() {
+        newTab()
+        // The keyboard waits for the window to finish opening, rather than rise mid-animation.
+        isCommandBarOpen = false
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            self?.isCommandBarOpen = true
+        }
     }
 
     /// Loads typed input in the focused tab, or in a fresh tab when nothing is focused.
@@ -247,12 +317,10 @@ final class BrowserStore {
 
     func open(_ url: URL) {
         if let tab = focusedTab {
-            if tab.url == nil, let i = tabs.firstIndex(where: { $0.id == tab.id }) {
-                tabs[i].url = url
-            }
+            library.setURL(url, for: tab.id)
             engine.load(url, in: tab.id)
-            touch(tab.id)
-            scheduleSave()
+            library.touch(tab.id)
+            library.scheduleSave()
         } else {
             newTab(url: url)
         }
@@ -261,21 +329,14 @@ final class BrowserStore {
     /// Closing a tab in a Pair takes the Pair apart and leaves its partner on screen alone.
     /// Closing a tab on its own promotes the space's most recent tab.
     func close(_ tabID: UUID) {
-        guard let tab = tab(id: tabID) else { return }
-        let pair = pair(containing: tabID)
-        let wasShownInPair = pair != nil && pair?.id == shownPairID
-        if let pair { pairs.removeAll { $0.id == pair.id } }
-        engine.discard(tabID)
-        runtime[tabID] = nil
-        tabs.removeAll { $0.id == tabID }
-        if let spaceID = tab.spaceID, lastTabBySpace[spaceID] == tabID { lastTabBySpace[spaceID] = nil }
-        if wasShownInPair, let partner = pair?.tabIDs.first(where: { $0 != tabID }) {
-            showSingle(partner, spaceID: self.tab(id: partner)?.spaceID ?? focusedPane.spaceID)
-        } else if !isPair, panes[0].tabID == tabID {
-            panes[0].tabID = nil
-            if let next = promotedTab(for: 0) { select(next.id) }
-        }
-        scheduleSave()
+        if let spaceID = tab(id: tabID)?.spaceID, lastTabBySpace[spaceID] == tabID { lastTabBySpace[spaceID] = nil }
+        library.close(tabID)
+    }
+
+    /// Closes the tab in the focused window.
+    func closeFocusedTab() {
+        guard let tabID = focusedPane.tabID else { return }
+        close(tabID)
     }
 
     /// Closes both tabs of a Pair.
@@ -284,49 +345,65 @@ final class BrowserStore {
         for tabID in pair.tabIDs { close(tabID) }
     }
 
-    /// Closing a tab promotes the pane's most recent tab.
+    /// The pane's most recent tab that no window shows, and whose Pair partner no other window shows.
     private func promotedTab(for paneIndex: Int) -> BrowserTab? {
         let spaceID = panes[paneIndex].spaceID
-        let shown = Set(panes.compactMap(\.tabID))
+        let shown = library.shownTabIDs
         return (today(in: spaceID) + pinned(in: spaceID))
-            .filter { !shown.contains($0.id) }
+            .filter { tab in
+                guard !shown.contains(tab.id) else { return false }
+                guard let pair = pair(containing: tab.id) else { return true }
+                return !pair.tabIDs.contains(where: shown.contains)
+            }
             .max { $0.lastActiveAt < $1.lastActiveAt }
     }
 
     func setTier(_ tier: TabTier, for tabID: UUID) {
-        guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        var tab = tabs.remove(at: i)
-        tab.tier = tier
-        tab.lastActiveAt = .now
-        switch tier {
-        case .essential:
-            tab.spaceID = nil
-            let at = (tabs.lastIndex { $0.tier == .essential }).map { $0 + 1 } ?? 0
-            tabs.insert(tab, at: at)
-        case .pinned:
-            tab.spaceID = tab.spaceID ?? focusedPane.spaceID
-            let at = (tabs.lastIndex { $0.tier == .pinned }).map { $0 + 1 }
-                ?? (tabs.lastIndex { $0.tier == .essential }).map { $0 + 1 } ?? 0
-            tabs.insert(tab, at: at)
-        case .today:
-            tab.spaceID = tab.spaceID ?? focusedPane.spaceID
-            let at = tabs.firstIndex { $0.tier == .today } ?? tabs.count
-            tabs.insert(tab, at: at)
-        }
-        scheduleSave()
+        library.setTier(tier, for: tabID, spaceID: focusedPane.spaceID)
+    }
+
+    /// Pins the focused tab, or puts a pinned one back in Today.
+    func togglePinFocused() {
+        guard let tab = focusedTab, tab.tier != .essential else { return }
+        setTier(tab.tier == .pinned ? .today : .pinned, for: tab.id)
     }
 
     func move(_ tabID: UUID, toSpace spaceID: UUID) {
-        guard let i = tabs.firstIndex(where: { $0.id == tabID }), tabs[i].tier != .essential else { return }
-        tabs[i].spaceID = spaceID
-        if isPair, let index = paneIndex(showing: tabID) {
-            // The Pair keeps its tab; that window just takes the new space.
-            panes[index].spaceID = spaceID
-        } else if !isPair, panes[0].tabID == tabID {
-            panes[0].tabID = nil
-            if let next = promotedTab(for: 0) { select(next.id) }
+        library.move(tabID, toSpace: spaceID)
+    }
+
+    /// The tabs in the order the Spine lists them in this window's space: Essentials, Pinned, Today.
+    /// A Pair counts once, by the tab of it this window would show.
+    var orderedTabIDs: [UUID] {
+        let spaceID = focusedPane.spaceID
+        let entries = spineEntries(in: spaceID)
+        func ids(_ list: [SpineEntry]) -> [UUID] {
+            list.map { entry in
+                switch entry {
+                case .tab(let tab): tab.id
+                case .pair(let pair): pair.tabIDs[0]
+                }
+            }
         }
-        scheduleSave()
+        return essentials.map(\.id) + ids(entries.pinned) + ids(entries.today)
+    }
+
+    /// ⌘1 to ⌘8 pick a tab by place; ⌘9 always picks the last.
+    func selectTab(at index: Int) {
+        let ordered = orderedTabIDs
+        guard !ordered.isEmpty else { return }
+        select(index >= 8 ? ordered[ordered.count - 1] : ordered[min(index, ordered.count - 1)])
+    }
+
+    /// ⌃Tab and ⌃⇧Tab walk the Spine's order, wrapping at either end.
+    func stepTab(by delta: Int) {
+        let ordered = orderedTabIDs
+        guard !ordered.isEmpty else { return }
+        let current = focusedPane.tabID.flatMap { id in
+            ordered.firstIndex(of: id) ?? pair(containing: id).flatMap { ordered.firstIndex(of: $0.tabIDs[0]) }
+        } ?? 0
+        let next = (current + delta + ordered.count) % ordered.count
+        select(ordered[next])
     }
 
     // MARK: The URL pill
@@ -369,10 +446,10 @@ final class BrowserStore {
         }
         spineState = state
         if state == .spines || state == .rail { lastStrip = state }
-        scheduleSave()
+        library.scheduleSave()
     }
 
-    /// The system-column Spine button cycles states.
+    /// The Spine button cycles states.
     func cycleSpine() {
         if isPair {
             setSpine(spineState == .hidden ? .rail : .hidden)
@@ -388,6 +465,18 @@ final class BrowserStore {
 
     var preferredStrip: SpineState { isPair ? .rail : lastStrip }
 
+    /// A window too narrow for the Sidebar shows Spines instead; widen it and the Sidebar returns.
+    /// Neither change is saved, so the window keeps the choice you made.
+    func fitSpine(roomForSidebar: Bool) {
+        if !roomForSidebar, spineState == .sidebar {
+            spineBeforeNarrow = .sidebar
+            spineState = .spines
+        } else if roomForSidebar, let restore = spineBeforeNarrow {
+            spineBeforeNarrow = nil
+            if spineState == .spines { spineState = restore }
+        }
+    }
+
     // MARK: The Pair
 
     func togglePair() {
@@ -395,34 +484,27 @@ final class BrowserStore {
     }
 
     /// Pairs the tab on screen with another, which takes the given side. Without one, the space's
-    /// most recent tab outside a Pair joins, or a fresh tab.
+    /// most recent tab outside a Pair and off screen everywhere joins, or a fresh tab.
     func openPair(with tabID: UUID? = nil, onSide side: Int = 1) {
         guard !isPair, let current = panes.first else { return }
         let spaceID = current.spaceID
-        let anchor = current.tabID ?? makeBlankTab(in: spaceID)
+        let anchor = current.tabID ?? library.insertTab(url: nil, spaceID: spaceID).id
+        let shown = library.shownTabIDs
         let companion: UUID
         if let tabID, tabID != anchor, tab(id: tabID) != nil {
             companion = tabID
         } else if let other = (today(in: spaceID) + pinned(in: spaceID))
-            .filter({ $0.id != anchor && pair(containing: $0.id) == nil })
+            .filter({ $0.id != anchor && pair(containing: $0.id) == nil && !shown.contains($0.id) })
             .max(by: { $0.lastActiveAt < $1.lastActiveAt }) {
             companion = other.id
         } else {
-            companion = makeBlankTab(in: spaceID)
+            companion = library.insertTab(url: nil, spaceID: spaceID).id
         }
-        // A tab belongs to one Pair at a time.
-        pairs.removeAll { $0.tabIDs.contains(anchor) || $0.tabIDs.contains(companion) }
         let pair = TabPair(tabIDs: side == 0 ? [companion, anchor] : [anchor, companion])
-        pairs.append(pair)
+        library.addPair(pair)
         show(pair, focusing: companion)
         if let spaceID = tab(id: companion)?.spaceID { lastTabBySpace[spaceID] = companion }
-        scheduleSave()
-    }
-
-    private func makeBlankTab(in spaceID: UUID) -> UUID {
-        let tab = BrowserTab(url: nil, title: "", tier: .today, spaceID: spaceID)
-        tabs.insert(tab, at: tabs.firstIndex { $0.tier == .today } ?? tabs.count)
-        return tab.id
+        library.scheduleSave()
     }
 
     /// Takes the Pair on screen apart. The kept window's tab stays on screen; both tabs stay in the Spine.
@@ -434,58 +516,46 @@ final class BrowserStore {
     /// Takes a Pair apart into two ordinary tabs.
     func separate(_ pairID: UUID, keeping keep: Int? = nil) {
         guard pair(id: pairID) != nil else { return }
-        pairs.removeAll { $0.id == pairID }
         if shownPairID == pairID {
             let kept = panes[min(keep ?? focusedPaneIndex, panes.count - 1)]
             showSingle(kept.tabID, spaceID: kept.spaceID)
         }
-        scheduleSave()
+        library.removePair(pairID)
     }
 
     /// Trades sides. The divider keeps its place from each window's point of view.
     func swapPair() {
-        guard isPair else { return }
-        updateShownPair { pair in
+        guard isPair, let shownPairID else { return }
+        library.updatePair(shownPairID) { pair in
             pair.tabIDs.reverse()
             pair.split = pair.split.map { 1 - $0 }
         }
         panes.swapAt(0, 1)
         focusedPaneIndex = 1 - focusedPaneIndex
-        scheduleSave()
+        library.scheduleSave()
     }
 
-    /// Trades sides for any Pair, on screen or waiting in the Spine.
+    /// Trades sides for any Pair, on screen in any window or waiting in the Spine.
     func swapSides(of pairID: UUID) {
-        if pairID == shownPairID {
-            swapPair()
-            return
-        }
-        guard let i = pairs.firstIndex(where: { $0.id == pairID }) else { return }
-        pairs[i].tabIDs.reverse()
-        pairs[i].split = pairs[i].split.map { 1 - $0 }
-        scheduleSave()
+        library.swapSides(of: pairID)
     }
 
-    /// Nil puts the divider back on the fold. Each Pair remembers its own.
+    /// Nil puts the divider back in the middle. Each Pair remembers its own.
     func setPairSplit(_ split: Double?) {
-        guard pairSplit != split else { return }
-        updateShownPair { $0.split = split }
-        scheduleSave()
+        guard let shownPairID, pairSplit != split else { return }
+        library.updatePair(shownPairID) { $0.split = split }
     }
 
     // MARK: Drag and drop
 
     func beginDrag(_ cargo: DragCargo) {
-        guard drag != cargo else { return }
-        drag = cargo
+        library.beginDrag(cargo)
         // A tab picked up from the overlay Sidebar needs the windows uncovered to land on.
         if case .tab = cargo { isSidebarOverlayOpen = false }
     }
 
-    /// Ends the drag only if it's still the one that began, so a late callback can't end the next.
     func endDrag(_ cargo: DragCargo? = nil) {
-        guard let drag, cargo == nil || cargo == drag else { return }
-        self.drag = nil
+        library.endDrag(cargo)
     }
 
     /// A tab dropped on a Pair window joins the Pair there. Dropped on the window across, it swaps sides.
@@ -518,292 +588,86 @@ final class BrowserStore {
             guard let tab = tab(id: tabID), tab.tier != tier else { return }
             setTier(tier, for: tabID)
         } else if let url {
-            keep(url, as: tier)
+            library.keep(url, as: tier, spaceID: focusedPane.spaceID)
         }
-    }
-
-    private func keep(_ url: URL, as tier: TabTier) {
-        guard ["http", "https"].contains(url.scheme?.lowercased()), let host = url.host() else { return }
-        let spaceID = tier == .essential ? nil : focusedPane.spaceID
-        // Already kept there: nothing to add.
-        guard !tabs.contains(where: { $0.tier == tier && $0.spaceID == spaceID && $0.url == url }) else { return }
-        let tab = BrowserTab(url: url, title: "", tier: .today, spaceID: focusedPane.spaceID)
-        tabs.append(tab)
-        setTier(tier, for: tab.id)
-        // It won't load until it's opened, so ask the site for its icon now.
-        let root = URL(string: "https://\(host)")
-        let candidates = ["/apple-touch-icon.png", "/favicon.ico"].compactMap { URL(string: $0, relativeTo: root)?.absoluteURL }
-        favicons.fetch(pageHost: host, aliases: [], candidates: candidates)
     }
 
     // MARK: Auto-archive
 
-    private var archiveInterval: TimeInterval? { archiveAfterHours.map { $0 * 3600 } }
-
-    func setArchiveAfter(hours: Double?) {
-        archiveAfterHours = hours
-        sweepArchive()
-        scheduleSave()
-    }
-
-    /// When the next unpinned tab in this space archives. Tabs on screen don't count down.
-    func nextArchiveDate(in spaceID: UUID) -> Date? {
-        guard let interval = archiveInterval else { return nil }
-        let shown = Set(panes.compactMap(\.tabID))
-        return today(in: spaceID)
-            .filter { !shown.contains($0.id) }
-            .map { $0.lastActiveAt.addingTimeInterval(interval) }
-            .min()
-    }
-
-    /// When the next unpinned tab archives, in any space.
-    var nextArchiveDate: Date? {
-        spaces.compactMap { nextArchiveDate(in: $0.id) }.min()
-    }
-
-    func archiveDate(for tab: BrowserTab) -> Date? {
-        guard tab.tier == .today, let interval = archiveInterval, paneIndex(showing: tab.id) == nil else { return nil }
-        return tab.lastActiveAt.addingTimeInterval(interval)
-    }
-
-    func sweepArchive(now: Date = .now) {
-        guard let interval = archiveInterval else { return }
-        let shown = Set(panes.compactMap(\.tabID))
-        let expired = tabs.filter {
-            $0.tier == .today && !shown.contains($0.id) && now.timeIntervalSince($0.lastActiveAt) >= interval
-        }
-        guard !expired.isEmpty else { return }
-        expired.forEach { shelve($0) }
-        scheduleSave()
-    }
-
-    func archiveAllToday() {
-        let shown = Set(panes.compactMap(\.tabID))
-        today(in: focusedPane.spaceID).filter { !shown.contains($0.id) }.forEach { shelve($0) }
-        scheduleSave()
-    }
-
-    /// A Pair's tabs are shown and touched together, so they come due together. A pinned partner
-    /// stays behind as an ordinary tab.
-    private func shelve(_ tab: BrowserTab) {
-        pairs.removeAll { $0.tabIDs.contains(tab.id) }
-        engine.discard(tab.id)
-        runtime[tab.id] = nil
-        tabs.removeAll { $0.id == tab.id }
-        guard let url = tab.url else { return }
-        archive.insert(
-            ArchivedTab(url: url, title: tab.displayTitle, spaceID: tab.spaceID, tileHex: tab.tileHex),
-            at: 0
-        )
-    }
+    func setArchiveAfter(hours: Double?) { library.setArchiveAfter(hours: hours) }
+    func nextArchiveDate(in spaceID: UUID) -> Date? { library.nextArchiveDate(in: spaceID) }
+    var nextArchiveDate: Date? { library.nextArchiveDate }
+    func archiveDate(for tab: BrowserTab) -> Date? { library.archiveDate(for: tab) }
+    func sweepArchive(now: Date = .now) { library.sweepArchive(now: now) }
+    func archiveAllToday() { library.archiveAllToday(in: focusedPane.spaceID) }
+    func unloadIdleTabs(now: Date = .now) { library.unloadIdleTabs(now: now) }
 
     func restore(_ archivedID: UUID) {
-        guard let i = archive.firstIndex(where: { $0.id == archivedID }) else { return }
-        let item = archive.remove(at: i)
+        guard let item = library.takeFromArchive(archivedID) else { return }
         if let spaceID = item.spaceID, space(id: spaceID) != nil, focusedPane.spaceID != spaceID {
             switchSpace(to: spaceID)
         }
         let tab = newTab(url: item.url, title: item.title)
-        if let t = tabs.firstIndex(where: { $0.id == tab.id }) { tabs[t].tileHex = item.tileHex }
+        library.setTileHex(item.tileHex, for: tab.id)
         isArchiveOpen = false
     }
 
-    /// Zen-style unload: tabs idle past 30 minutes give their memory back and reload on activation.
-    func unloadIdleTabs(now: Date = .now) {
-        guard settings.unloadsIdleTabs else { return }
-        let shown = Set(panes.compactMap(\.tabID))
-        let idle = tabs.filter { !shown.contains($0.id) && now.timeIntervalSince($0.lastActiveAt) > 30 * 60 }
-        idle.forEach { engine.park($0.id) }
+    /// ⇧⌘T: the last tab closed comes back in its space.
+    func reopenClosedTab() {
+        guard let item = library.takeRecentlyClosed() else { return }
+        if let spaceID = item.spaceID, space(id: spaceID) != nil, focusedPane.spaceID != spaceID {
+            switchSpace(to: spaceID)
+        }
+        let tab = newTab(url: item.url, title: item.title)
+        library.setTileHex(item.tileHex, for: tab.id)
     }
 
     // MARK: Settings
 
-    func updateSettings(_ change: (inout BrowserSettings) -> Void) {
-        var next = settings
-        change(&next)
-        guard next != settings else { return }
-        let blockingChanged = next.blocksTrackers != settings.blocksTrackers
-        settings = next
-        if blockingChanged {
-            // Pages on screen reload so the change shows at once; the rest pick it up on their next load.
-            engine.setContentBlocking(next.blocksTrackers, reloading: panes.compactMap(\.tabID))
-        }
-        scheduleSave()
-    }
-
-    /// Cookies, site data, caches and the archive go. Open tabs stay and reload fresh, so no
-    /// signed-in page lingers and their back history starts over.
-    func clearBrowsingData() async {
-        await engine.removeWebsiteData()
-        engine.discardAll()
-        runtime.removeAll()
-        archive.removeAll()
-        favicons.clear()
-        webGeneration += 1
-        saveNow()
-    }
-
-    // MARK: Web callbacks
-
-    func webDidUpdate(_ tabID: UUID, title: String?, state: TabRuntime) {
-        guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        // A new page brings the pill back so you can see where you landed.
-        if runtime[tabID]?.currentURL != state.currentURL { setAddressHidden(false, for: tabID) }
-        if runtime[tabID] != state { runtime[tabID] = state }
-        var changed = false
-        if let title, !title.isEmpty, tabs[i].title != title {
-            tabs[i].title = title
-            changed = true
-        }
-        // Pinned tabs and Essentials keep their home address; Today tabs follow the page.
-        if tabs[i].tier == .today, let url = state.currentURL, tabs[i].url != url {
-            tabs[i].url = url
-            changed = true
-        }
-        if changed { scheduleSave() }
-    }
+    func updateSettings(_ change: (inout BrowserSettings) -> Void) { library.updateSettings(change) }
+    func clearBrowsingData() async { await library.clearBrowsingData() }
+    func saveNow() { library.saveNow() }
 
     // MARK: Persistence
 
-    private func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled, let self else { return }
-            Persistence.save(self.snapshot())
-        }
-    }
-
-    func saveNow() {
-        saveTask?.cancel()
-        Persistence.save(snapshot())
-    }
-
-    private func snapshot() -> Snapshot {
-        Snapshot(
-            spaces: spaces, tabs: tabs, archive: archive, panes: panes,
-            focusedPaneIndex: focusedPaneIndex, spineState: spineState,
-            archiveAfterHours: archiveAfterHours, lastTabBySpace: lastTabBySpace,
-            settings: settings, pairs: pairs, shownPairID: shownPairID
+    func snapshot() -> WindowSnapshot {
+        WindowSnapshot(
+            panes: panes, focusedPaneIndex: focusedPaneIndex, spineState: spineBeforeNarrow ?? spineState,
+            lastTabBySpace: lastTabBySpace, shownPairID: shownPairID
         )
     }
 
-    /// Drops Pairs whose tabs are gone or claimed twice, then makes sure the windows on screen
-    /// match the Pair they claim. State from before Pairs were kept turns its two windows into one.
-    private func reconcilePairs(saved: [TabPair], shown savedShown: UUID?) {
+    /// Makes sure the windows on screen match the Pair they claim. State from before Pairs were
+    /// kept turns its two windows into a Pair.
+    private func apply(_ state: WindowSnapshot) {
         let ids = Set(tabs.map(\.id))
-        var claimed = Set<UUID>()
-        pairs = saved.filter { pair in
-            guard pair.tabIDs.count == 2, pair.tabIDs[0] != pair.tabIDs[1],
-                  pair.tabIDs.allSatisfy({ ids.contains($0) && !claimed.contains($0) }) else { return false }
-            claimed.formUnion(pair.tabIDs)
-            return true
+        var restored = state.panes.isEmpty ? [Pane(tabID: nil, spaceID: spaces[0].id)] : state.panes
+        restored = restored.map { pane in
+            var pane = pane
+            if let tabID = pane.tabID, !ids.contains(tabID) { pane.tabID = nil }
+            if space(id: pane.spaceID) == nil { pane.spaceID = spaces[0].id }
+            return pane
         }
-        guard panes.count == 2 else {
-            panes = Array(panes.prefix(1))
-            shownPairID = nil
-            return
-        }
-        let onScreen = panes.compactMap(\.tabID)
-        if let pair = pair(id: savedShown), pair.tabIDs == onScreen {
-            shownPairID = pair.id
-        } else if onScreen.count == 2, onScreen.allSatisfy({ ids.contains($0) && pair(containing: $0) == nil }) {
-            let pair = TabPair(tabIDs: onScreen)
-            pairs.append(pair)
-            shownPairID = pair.id
+        focusedPaneIndex = min(state.focusedPaneIndex, max(restored.count - 1, 0))
+        spineState = state.spineState
+        lastTabBySpace = state.lastTabBySpace
+        if restored.count == 2 {
+            let onScreen = restored.compactMap(\.tabID)
+            if let pair = pair(id: state.shownPairID), pair.tabIDs == onScreen {
+                shownPairID = pair.id
+            } else if onScreen.count == 2, onScreen.allSatisfy({ pair(containing: $0) == nil }) {
+                let pair = TabPair(tabIDs: onScreen)
+                library.addPair(pair)
+                shownPairID = pair.id
+            } else {
+                restored = [restored[min(focusedPaneIndex, 1)]]
+                focusedPaneIndex = 0
+                shownPairID = nil
+            }
         } else {
-            panes = [panes[min(focusedPaneIndex, 1)]]
-            focusedPaneIndex = 0
+            restored = Array(restored.prefix(1))
             shownPairID = nil
         }
-    }
-
-    private func apply(_ snapshot: Snapshot) {
-        spaces = snapshot.spaces
-        tabs = snapshot.tabs
-        archive = snapshot.archive
-        panes = snapshot.panes
-        focusedPaneIndex = min(snapshot.focusedPaneIndex, max(snapshot.panes.count - 1, 0))
-        spineState = snapshot.spineState
-        archiveAfterHours = snapshot.archiveAfterHours
-        lastTabBySpace = snapshot.lastTabBySpace
-        settings = snapshot.settings ?? BrowserSettings()
-        reconcilePairs(saved: snapshot.pairs ?? [], shown: snapshot.shownPairID)
-        if spaces.isEmpty || panes.isEmpty { seed() }
-    }
-
-    private func seed() {
-        let personal = Space(name: "Personal", emoji: "🪴", binding: .verdigris)
-        let work = Space(name: "Work", emoji: "🗂️", binding: .lapis)
-        spaces = [personal, work]
-
-        func make(_ title: String, _ address: String, _ tier: TabTier, _ space: Space?, tile: UInt32,
-                  glyph: String? = nil, idleHours: Double = 0) -> BrowserTab {
-            BrowserTab(
-                url: URL(string: address), title: title, tier: tier, spaceID: space?.id,
-                lastActiveAt: Date().addingTimeInterval(-idleHours * 3600), tileHex: tile, glyph: glyph
-            )
-        }
-
-        let kinfolk = make("Kinfolk — Slow rooms", "https://www.kinfolk.com", .today, personal, tile: 0x221D18)
-        tabs = [
-            make("Mail", "https://mail.google.com", .essential, nil, tile: 0xC5221F, glyph: "M"),
-            make("Calendar", "https://calendar.google.com", .essential, nil, tile: 0x1A73E8, glyph: "C"),
-            make("Slack", "https://slack.com", .essential, nil, tile: 0x4A154B, glyph: "S"),
-            make("Spotify", "https://open.spotify.com", .essential, nil, tile: 0x1E7D4F, glyph: "♪"),
-            make("Dwell — Journal", "https://www.dwell.com", .pinned, personal, tile: 0xC9452E),
-            make("Are.na — Reading list", "https://www.are.na", .pinned, personal, tile: 0x2B2B2B),
-            make("Notion — Studio brief", "https://www.notion.so", .pinned, work, tile: 0x2B2B2B),
-            kinfolk,
-            make("Vitsœ — 620 Chair", "https://www.vitsoe.com/us/620", .today, personal, tile: 0x8E2C2C, idleHours: 1.2),
-            make("Wikipedia — Hinge", "https://en.wikipedia.org/wiki/Hinge", .today, personal, tile: 0x6B6660, idleHours: 2.1),
-            make("Noma — Reservations", "https://noma.dk", .today, personal, tile: 0x2F5D4A, idleHours: 2.93),
-            make("GitHub", "https://github.com", .today, work, tile: 0x2B2B2B, idleHours: 0.5),
-            make("Hacker News", "https://news.ycombinator.com", .today, work, tile: 0xC9452E, idleHours: 3),
-        ]
-        archive = []
-        pairs = []
-        shownPairID = nil
-        panes = [Pane(tabID: kinfolk.id, spaceID: personal.id)]
-        focusedPaneIndex = 0
-        spineState = .sidebar
-        lastTabBySpace = [personal.id: kinfolk.id]
-    }
-}
-
-struct Snapshot: Codable {
-    var spaces: [Space]
-    var tabs: [BrowserTab]
-    var archive: [ArchivedTab]
-    var panes: [Pane]
-    var focusedPaneIndex: Int
-    var spineState: SpineState
-    var archiveAfterHours: Double?
-    var lastTabBySpace: [UUID: UUID]
-    /// Optional so state saved before Settings existed still loads.
-    var settings: BrowserSettings?
-    /// Optional so state saved before Pairs were kept still loads.
-    var pairs: [TabPair]?
-    var shownPairID: UUID?
-}
-
-/// Local-only state: one JSON file in Application Support. No accounts, no telemetry.
-enum Persistence {
-    private static var fileURL: URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        return base.appendingPathComponent("Spinebrowser", isDirectory: true).appendingPathComponent("state.json")
-    }
-
-    static func load() -> Snapshot? {
-        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(Snapshot.self, from: data)
-    }
-
-    static func save(_ snapshot: Snapshot) {
-        guard let url = fileURL, let data = try? JSONEncoder().encode(snapshot) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        panes = restored
     }
 }

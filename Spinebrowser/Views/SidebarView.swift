@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.spineTopInset) private var spineTopInset
 
     var body: some View {
         let space = store.activeSpace
@@ -22,7 +23,7 @@ struct SidebarView: View {
             .scrollIndicators(.hidden)
             commandField(binding)
         }
-        .padding(.top, 30)
+        .padding(.top, 30 + spineTopInset)
         .padding(.leading, 18)
         .padding(.trailing, 16)
         .padding(.bottom, 22)
@@ -91,6 +92,7 @@ struct SidebarView: View {
                         }
                 }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .accessibilityLabel(tab.displayTitle)
                 .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
@@ -170,6 +172,7 @@ struct SidebarView: View {
             .background(p.raised, in: Capsule())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
     }
 }
 
@@ -280,6 +283,7 @@ struct TabRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .offset(x: swipe)
         .opacity(1 - min(0.6, Double(-swipe) / 200))
         .simultaneousGesture(closeSwipe)
