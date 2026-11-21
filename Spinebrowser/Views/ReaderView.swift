@@ -13,15 +13,16 @@ struct ReaderSeek: Equatable {
     var progress: Double
 }
 
-/// The article set in type: a web view of its own that loads nothing but the article, with scripts
-/// for the page off. It keeps no cookies, so the article's images load without your sign-ins.
+/// Hosts a tab's reader page. The page itself lives in the engine, so hiding Reader and showing it
+/// again is instant and keeps your place, and moving between postures never rebuilds it.
 struct ReaderWebView: UIViewRepresentable {
     let tabID: UUID
+    let engine: WebEngine
     let article: Article
     let tone: ReaderTone
     let preferences: ReaderPreferences
     let flow: ReaderFlow
-    /// Where to open, 0 to 1.
+    /// Where to open, 0 to 1, when the page is new.
     var start: Double = 0
     var turn: ReaderTurn?
     var seek: ReaderSeek?
@@ -33,172 +34,265 @@ struct ReaderWebView: UIViewRepresentable {
     /// Reading down hides the pill; pulling back up shows it.
     var onReadingDown: (Bool) -> Void = { _ in }
 
+    func makeUIView(context: Context) -> ReaderHostView {
+        ReaderHostView()
+    }
+
+    func updateUIView(_ host: ReaderHostView, context: Context) {
+        host.show(engine.readerPage(for: tabID), with: self)
+    }
+}
+
+/// Holds a reader page while it's on screen. During a change of posture two hosts can be alive at
+/// once, the old one fading out. The newest host on screen owns the page; one on its way out never
+/// takes it back, and only the owner gives the page its layout.
+final class ReaderHostView: UIView {
+    private var page: ReaderPageController?
+    private var config: ReaderWebView?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        clipsToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @MainActor
+    func show(_ page: ReaderPageController, with config: ReaderWebView) {
+        self.page = page
+        self.config = config
+        // Claim the page only when no other host on screen holds it.
+        if page.view.superview !== self, page.view.superview?.window == nil, window != nil {
+            claim()
+        } else if page.view.superview === self {
+            page.update(config)
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Arriving on screen, this host takes the page, even from one still fading out.
+        guard window != nil else { return }
+        MainActor.assumeIsolated { claim() }
+    }
+
+    @MainActor
+    private func claim() {
+        guard let page, let config else { return }
+        let view = page.view
+        let moved = view.superview !== self
+        if moved {
+            view.removeFromSuperview()
+            view.frame = bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            addSubview(view)
+        }
+        // Moved first, then laid out, so a new layout measures this window.
+        page.update(config)
+        if moved { page.attached() }
+    }
+}
+
+/// One tab's article set in type: a web view that loads nothing but the article, with the page's
+/// scripts off. Every reader page shares one cookie-free data store, so the article's images load
+/// without your sign-ins.
+@MainActor
+final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
     static let world = WKContentWorld.world(name: "spine-reader-page")
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> WKWebView {
+    /// One configuration for every reader page: the paging script and the message route are set
+    /// up once, and pages share a data store, so WebKit can keep their process warm.
+    private static let configuration: WKWebViewConfiguration = {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.dataDetectorTypes = []
         let controller = configuration.userContentController
         controller.addUserScript(WKUserScript(
-            source: ReaderDocument.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: Self.world
+            source: ReaderDocument.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: world
         ))
-        controller.add(context.coordinator.proxy, contentWorld: Self.world, name: "reader")
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.uiDelegate = context.coordinator
+        controller.add(ReaderMessageRouter.shared, contentWorld: world, name: "reader")
+        return configuration
+    }()
+
+    let view: WKWebView
+    private var parent: ReaderWebView?
+    private var loadedKey: String?
+    private var appliedStyle: [String: String] = [:]
+    private var appliedFlow: ReaderFlow?
+    private var lastTurn: UUID?
+    private var lastSeek: UUID?
+    private var state: (progress: Double, page: Int, pages: Int)?
+    private var panAnchor: CGFloat = 0
+
+    override init() {
+        view = WKWebView(frame: .zero, configuration: Self.configuration)
+        super.init()
+        view.navigationDelegate = self
+        view.uiDelegate = self
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.isFindInteractionEnabled = true
-        view.scrollView.panGestureRecognizer.addTarget(context.coordinator, action: #selector(Coordinator.panned(_:)))
-        context.coordinator.view = view
-        context.coordinator.update(self)
-        return view
+        view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(panned(_:)))
+        ReaderMessageRouter.shared.register(self, for: view)
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {
-        context.coordinator.update(self)
+    /// A blank page, so the web process is up before the first article needs it.
+    func warm() {
+        view.loadHTMLString("<!doctype html><title></title>", baseURL: nil)
     }
 
-    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
-        view.configuration.userContentController.removeAllScriptMessageHandlers()
+    func close() {
+        ReaderMessageRouter.shared.unregister(view)
         view.stopLoading()
+        view.removeFromSuperview()
     }
 
-    @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        weak var view: WKWebView?
-        var parent: ReaderWebView?
-        lazy var proxy = ReaderMessageProxy(coordinator: self)
-        private var loadedKey: String?
-        private var appliedStyle: [String: String] = [:]
-        private var appliedFlow: ReaderFlow?
-        private var lastTurn: UUID?
-        private var lastSeek: UUID?
-        private var progress: Double = 0
-        private var panAnchor: CGFloat = 0
-
-        func update(_ next: ReaderWebView) {
-            parent = next
-            guard let view else { return }
-            let style = ReaderDocument.variables(tone: next.tone, preferences: next.preferences)
-            // A new article, or a switch between scrolling and pages, needs a fresh document.
-            let key = "\(next.article.url.absoluteString)|\(next.article.html.count)|\(next.flow.isPaged)|\(perSpread(next.flow))|\(Int(next.topInset))"
-            view.scrollView.isScrollEnabled = !next.flow.isPaged
-            view.scrollView.bounces = !next.flow.isPaged
-            if key != loadedKey {
-                let start = loadedKey == nil ? next.start : progress
-                loadedKey = key
-                appliedStyle = style
-                appliedFlow = next.flow
-                lastTurn = next.turn?.id
-                lastSeek = next.seek?.id
-                var html = ReaderDocument.html(
-                    article: next.article, tone: next.tone, preferences: next.preferences, flow: next.flow, start: start
-                )
-                if !next.flow.isPaged {
-                    html = html.replacingOccurrences(of: "<body class=\"scroll\"", with: "<body class=\"scroll\" style=\"--top: \(Int(next.topInset))px\"")
-                }
-                view.loadHTMLString(html, baseURL: nil)
-                return
+    func update(_ next: ReaderWebView) {
+        parent = next
+        let style = ReaderDocument.variables(tone: next.tone, preferences: next.preferences)
+        // A new article, or a switch between scrolling and pages, needs a fresh document.
+        let key = "\(next.article.url.absoluteString)|\(next.article.html.count)|\(next.flow.isPaged)|\(perSpread(next.flow))|\(Int(next.topInset))"
+        view.scrollView.isScrollEnabled = !next.flow.isPaged
+        view.scrollView.bounces = !next.flow.isPaged
+        if key != loadedKey {
+            // The same article in a new shape opens where you were.
+            let sameArticle = loadedKey?.hasPrefix("\(next.article.url.absoluteString)|\(next.article.html.count)|") ?? false
+            let start = sameArticle ? (state?.progress ?? next.start) : next.start
+            loadedKey = key
+            appliedStyle = style
+            appliedFlow = next.flow
+            lastTurn = next.turn?.id
+            lastSeek = next.seek?.id
+            var html = ReaderDocument.html(
+                article: next.article, tone: next.tone, preferences: next.preferences, flow: next.flow, start: start
+            )
+            if !next.flow.isPaged {
+                html = html.replacingOccurrences(of: "<body class=\"scroll\"", with: "<body class=\"scroll\" style=\"--top: \(Int(next.topInset))px\"")
             }
-            if style != appliedStyle {
-                appliedStyle = style
-                run("spineReader.restyle(\(json(style)))")
-            }
-            if next.flow != appliedFlow, case let .paged(width, gap, count) = next.flow {
-                appliedFlow = next.flow
-                run("spineReader.layout(\(width), \(gap), \(count))")
-            }
-            if let turn = next.turn, turn.id != lastTurn {
-                lastTurn = turn.id
-                run(turn.forward ? "spineReader.next()" : "spineReader.previous()")
-            }
-            if let seek = next.seek, seek.id != lastSeek {
-                lastSeek = seek.id
-                run("spineReader.goTo(\(seek.progress))")
-            }
+            view.loadHTMLString(html, baseURL: nil)
+            return
         }
-
-        private func perSpread(_ flow: ReaderFlow) -> Int {
-            if case let .paged(_, _, count) = flow { return count }
-            return 0
+        if style != appliedStyle {
+            appliedStyle = style
+            run("spineReader.restyle(\(json(style)))")
         }
-
-        private func json(_ object: [String: String]) -> String {
-            guard let data = try? JSONSerialization.data(withJSONObject: object),
-                  let text = String(data: data, encoding: .utf8) else { return "{}" }
-            return text
+        if next.flow != appliedFlow, case let .paged(width, gap, count) = next.flow {
+            appliedFlow = next.flow
+            run("spineReader.layout(\(width), \(gap), \(count))")
         }
-
-        private func run(_ script: String) {
-            view?.evaluateJavaScript(script, in: nil, in: ReaderWebView.world, completionHandler: nil)
+        if let turn = next.turn, turn.id != lastTurn {
+            lastTurn = turn.id
+            run(turn.forward ? "spineReader.next()" : "spineReader.previous()")
         }
-
-        func received(_ body: Any) {
-            guard let message = body as? [String: Any], let kind = message["kind"] as? String, kind == "state" else { return }
-            let value = (message["progress"] as? Double) ?? (message["progress"] as? NSNumber)?.doubleValue ?? 0
-            let page = (message["page"] as? Int) ?? 0
-            let pages = (message["pages"] as? Int) ?? 1
-            progress = value
-            parent?.onState(value, page, pages)
+        if let seek = next.seek, seek.id != lastSeek {
+            lastSeek = seek.id
+            run("spineReader.goTo(\(seek.progress))")
         }
+    }
 
-        @objc func panned(_ pan: UIPanGestureRecognizer) {
-            guard let scroll = pan.view as? UIScrollView, parent?.flow.isPaged == false else { return }
-            let y = pan.translation(in: scroll).y
-            switch pan.state {
-            case .began:
+    /// Back on screen with its place kept: tell the chip where that is.
+    func attached() {
+        guard let state else { return }
+        Task { @MainActor [weak self] in self?.parent?.onState(state.progress, state.page, state.pages) }
+    }
+
+    private func perSpread(_ flow: ReaderFlow) -> Int {
+        if case let .paged(_, _, count) = flow { return count }
+        return 0
+    }
+
+    private func json(_ object: [String: String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
+    }
+
+    private func run(_ script: String) {
+        view.evaluateJavaScript(script, in: nil, in: Self.world, completionHandler: nil)
+    }
+
+    func received(_ body: Any) {
+        guard let message = body as? [String: Any], let kind = message["kind"] as? String, kind == "state" else { return }
+        let value = (message["progress"] as? Double) ?? (message["progress"] as? NSNumber)?.doubleValue ?? 0
+        let page = (message["page"] as? Int) ?? 0
+        let pages = (message["pages"] as? Int) ?? 1
+        state = (value, page, pages)
+        parent?.onState(value, page, pages)
+    }
+
+    @objc private func panned(_ pan: UIPanGestureRecognizer) {
+        guard let scroll = pan.view as? UIScrollView, parent?.flow.isPaged == false else { return }
+        let y = pan.translation(in: scroll).y
+        switch pan.state {
+        case .began:
+            panAnchor = y
+        case .changed, .ended:
+            let atTop = scroll.contentOffset.y <= 1
+            let delta = y - panAnchor
+            if delta < -24 {
+                parent?.onReadingDown(true)
                 panAnchor = y
-            case .changed, .ended:
-                let atTop = scroll.contentOffset.y <= 1
-                let delta = y - panAnchor
-                if delta < -24 {
-                    parent?.onReadingDown(true)
-                    panAnchor = y
-                } else if delta > 24 || (atTop && delta >= 0) {
-                    parent?.onReadingDown(false)
-                    panAnchor = y
-                }
-            default:
-                break
+            } else if delta > 24 || (atTop && delta >= 0) {
+                parent?.onReadingDown(false)
+                panAnchor = y
             }
+        default:
+            break
         }
+    }
 
-        // The reader page loads only its own document. Links leave Reader for the real page.
-        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-            guard let url = action.request.url else { return .cancel }
-            if url.scheme == "about" { return .allow }
-            if action.navigationType == .linkActivated, action.targetFrame?.isMainFrame ?? true {
-                if url.fragment != nil, url.scheme == "about" || url.absoluteString.hasPrefix("about:blank") { return .allow }
-                parent?.onLink(url)
-            }
-            return .cancel
+    // The reader page loads only its own document. Links leave Reader for the real page.
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
+        guard let url = action.request.url else { return .cancel }
+        if url.scheme == "about" { return .allow }
+        if action.navigationType == .linkActivated, action.targetFrame?.isMainFrame ?? true {
+            parent?.onLink(url)
         }
+        return .cancel
+    }
 
-        func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
-            guard let url = elementInfo.linkURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            parent?.onPeek(url)
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: []) }
+    func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
+        guard let url = elementInfo.linkURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        parent?.onPeek(url)
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: []) }
+    }
+
+    /// If WebKit ever drops the page's process, the next update loads the article again.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loadedKey = nil
+        if let parent { update(parent) }
+    }
+}
+
+/// The content controller keeps its handler alive, and every reader page shares one, so messages
+/// find their page by the web view that sent them.
+final class ReaderMessageRouter: NSObject, WKScriptMessageHandler {
+    static let shared = ReaderMessageRouter()
+    private var pages: [ObjectIdentifier: WeakReaderPage] = [:]
+
+    @MainActor func register(_ page: ReaderPageController, for view: WKWebView) {
+        pages[ObjectIdentifier(view)] = WeakReaderPage(page: page)
+    }
+
+    @MainActor func unregister(_ view: WKWebView) {
+        pages[ObjectIdentifier(view)] = nil
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        let body = message.body
+        MainActor.assumeIsolated {
+            guard let view = message.webView else { return }
+            pages[ObjectIdentifier(view)]?.page?.received(body)
         }
     }
 }
 
-/// The content controller keeps its handlers alive, so it holds this instead of the coordinator.
-final class ReaderMessageProxy: NSObject, WKScriptMessageHandler {
-    weak var coordinator: ReaderWebView.Coordinator?
-
-    init(coordinator: ReaderWebView.Coordinator) { self.coordinator = coordinator }
-
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        let body = message.body
-        MainActor.assumeIsolated { coordinator?.received(body) }
-    }
+private struct WeakReaderPage {
+    weak var page: ReaderPageController?
 }
 
 // MARK: - Reader in a window
@@ -224,7 +318,7 @@ struct ReaderPage: View {
                 Color(hex: tone.background)
                 if let article = session?.article {
                     ReaderWebView(
-                        tabID: tab.id, article: article, tone: tone, preferences: preferences, flow: .scroll,
+                        tabID: tab.id, engine: store.engine, article: article, tone: tone, preferences: preferences, flow: .scroll,
                         start: session?.progress ?? 0, topInset: narrow ? 112 : 76,
                         onState: { progress, page, pages in
                             store.library.readerMoved(tab.id, progress: progress, page: page, pages: pages)

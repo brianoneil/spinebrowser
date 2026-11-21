@@ -83,7 +83,7 @@ struct ReaderBook: View {
 
             if let article = session?.article {
                 ReaderWebView(
-                    tabID: tab.id, article: article, tone: tone, preferences: preferences,
+                    tabID: tab.id, engine: store.engine, article: article, tone: tone, preferences: preferences,
                     flow: .paged(width: width, gap: gap, perSpread: 2), start: session?.progress ?? 0, turn: turn,
                     onState: { progress, page, pages in
                         store.library.readerMoved(tab.id, progress: progress, page: page, pages: pages)
@@ -253,7 +253,7 @@ struct ReaderTabletop: View {
                 .offset(x: 10, y: insets.top)
             if let article = session?.article {
                 ReaderWebView(
-                    tabID: tab.id, article: article, tone: tone, preferences: preferences,
+                    tabID: tab.id, engine: store.engine, article: article, tone: tone, preferences: preferences,
                     flow: .paged(width: width, gap: 64, perSpread: 1), start: session?.progress ?? 0,
                     turn: turn, seek: seek,
                     onState: { progress, page, pages in

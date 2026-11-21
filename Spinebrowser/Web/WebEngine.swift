@@ -16,6 +16,10 @@ final class WebEngine: NSObject {
     /// Live pages peeked at in a Glance, by Glance. They belong to no tab until kept.
     private var glanceViews: [UUID: WKWebView] = [:]
     private var glanceObservers: [UUID: [NSKeyValueObservation]] = [:]
+    /// Reader pages by tab. One stays alive while its tab shows the same page, so Reader comes
+    /// back instantly. A spare waits warm, so even the first Reader doesn't wait on a new process.
+    private var readerPages: [UUID: ReaderPageController] = [:]
+    private var spareReaderPage: ReaderPageController?
     private let configuration = WKWebViewConfiguration()
     private var blocker: ContentBlocker?
     /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
@@ -154,6 +158,7 @@ final class WebEngine: NSObject {
     }
 
     private func release(_ tabID: UUID) {
+        releaseReaderPage(tabID)
         observers[tabID]?.forEach { $0.invalidate() }
         observers[tabID] = nil
         homeNavigations[tabID] = nil
@@ -161,6 +166,29 @@ final class WebEngine: NSObject {
             view.stopLoading()
             view.removeFromSuperview()
         }
+    }
+
+    // MARK: Reader pages
+
+    func readerPage(for tabID: UUID) -> ReaderPageController {
+        if let page = readerPages[tabID] { return page }
+        let page = spareReaderPage ?? ReaderPageController()
+        spareReaderPage = nil
+        readerPages[tabID] = page
+        return page
+    }
+
+    /// Readies a reader page before anyone asks for one.
+    func warmReaderPage() {
+        guard spareReaderPage == nil else { return }
+        let page = ReaderPageController()
+        page.warm()
+        spareReaderPage = page
+    }
+
+    /// The tab's page changed or it went away: its reader page goes too.
+    func releaseReaderPage(_ tabID: UUID) {
+        readerPages.removeValue(forKey: tabID)?.close()
     }
 
     // MARK: Glance

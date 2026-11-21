@@ -34,6 +34,8 @@ final class Library {
     private(set) var readerable: [UUID: URL] = [:]
     /// Tabs showing Reader. Runtime only.
     private(set) var reader: [UUID: ReaderSession] = [:]
+    /// The article last pulled from each tab's page, so Reader reopens without extracting again.
+    @ObservationIgnored private var articles: [UUID: Article] = [:]
     /// Tabs on their way to the archive. Their rows tilt onto the shelf as they go.
     private(set) var shelving: Set<UUID> = []
     /// The last tabs to shelve, by space, so the Spine can say how many just went.
@@ -239,6 +241,7 @@ final class Library {
     func setReaderable(_ readable: Bool, for tabID: UUID, url: URL) {
         if readable {
             if readerable[tabID] != url { readerable[tabID] = url }
+            engine.warmReaderPage()
         } else if readerable[tabID] != nil {
             readerable[tabID] = nil
         }
@@ -248,11 +251,16 @@ final class Library {
     /// underneath, so leaving Reader puts you back exactly where you were.
     func openReader(_ tabID: UUID) {
         guard reader[tabID] == nil, let view = engine.loadedView(tabID) else { return }
+        if let kept = articles[tabID], Self.samePage(kept.url, view.url) {
+            reader[tabID] = ReaderSession(url: view.url, article: kept)
+            return
+        }
         reader[tabID] = ReaderSession(url: view.url)
         Task { @MainActor [weak self] in
             let article = await ReaderExtractor.extract(from: view)
             guard let self, self.reader[tabID] != nil else { return }
             if let article {
+                self.articles[tabID] = article
                 self.reader[tabID]?.article = article
             } else {
                 self.reader[tabID]?.failed = true
@@ -276,6 +284,8 @@ final class Library {
     private func forgetReader(_ tabID: UUID) {
         reader[tabID] = nil
         readerable[tabID] = nil
+        articles[tabID] = nil
+        engine.releaseReaderPage(tabID)
     }
 
     /// The same page, give or take a #fragment.
@@ -570,7 +580,14 @@ final class Library {
             if let session = reader[tabID], state.currentURL != nil, !Self.samePage(session.url, state.currentURL) {
                 reader[tabID] = nil
             }
-            if let found = readerable[tabID], !Self.samePage(found, state.currentURL) { readerable[tabID] = nil }
+            if let found = readerable[tabID], !Self.samePage(found, state.currentURL) {
+                readerable[tabID] = nil
+                // A reader page kept for the page before is no use here.
+                if reader[tabID] == nil {
+                    articles[tabID] = nil
+                    engine.releaseReaderPage(tabID)
+                }
+            }
         }
         recordVisit(tabID, from: previous, title: title, state: state)
         if runtime[tabID] != state { runtime[tabID] = state }

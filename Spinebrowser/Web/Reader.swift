@@ -430,6 +430,17 @@ enum ReaderDocument {
         }, { passive: true });
       }
 
+      // The page can arrive before its window has its final size, and postures change it.
+      // Measure again whenever the size changes, keeping your place.
+      var lastSize = innerWidth + 'x' + innerHeight;
+      addEventListener('resize', function () {
+        var size = innerWidth + 'x' + innerHeight;
+        if (size === lastSize) { return; }
+        lastSize = size;
+        var keep = progress();
+        requestAnimationFrame(function () { measure(); goTo(keep); });
+      });
+
       function settle() { measure(); goTo(+body.dataset.start || 0); }
       // Images change the length as they arrive, so the count settles again once they do.
       if (document.readyState === 'complete') { settle(); } else { addEventListener('load', settle); }
