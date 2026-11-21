@@ -15,9 +15,22 @@
 		5B0000000000000000000001 /* Spinebrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spinebrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5B0000000000000000000020 /* Exceptions for "Spinebrowser" folder in "Spinebrowser" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5B0000000000000000000006 /* Spinebrowser */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5B0000000000000000000002 /* Spinebrowser */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5B0000000000000000000020 /* Exceptions for "Spinebrowser" folder in "Spinebrowser" target */,
+			);
 			path = Spinebrowser;
 			sourceTree = "<group>";
 		};
@@ -188,7 +201,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3YUUX4PHL7;
 				ENABLE_PREVIEWS = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Spinebrowser/Spinebrowser.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spinebrowser/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spine;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -216,7 +231,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3YUUX4PHL7;
 				ENABLE_PREVIEWS = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Spinebrowser/Spinebrowser.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spinebrowser/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spine;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

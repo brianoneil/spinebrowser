@@ -29,6 +29,8 @@ struct BrowserWindow: View {
     @Environment(Library.self) private var library
     @Environment(\.scenePhase) private var scenePhase
     @State private var store: BrowserStore?
+    /// A link that arrived before this window had its store, as on a cold launch.
+    @State private var pendingLinks: [URL] = []
 
     var body: some View {
         ZStack {
@@ -47,7 +49,27 @@ struct BrowserWindow: View {
             guard store == nil else { return }
             let id = windowID ?? UUID()
             if windowID == nil { windowID = id }
-            store = library.makeWindow(id: id)
+            let made = library.makeWindow(id: id)
+            store = made
+            pendingLinks.forEach(made.openIncoming)
+            pendingLinks = []
+        }
+        // As the default browser, links tapped in other apps arrive here. An open window takes
+        // them, rather than each link opening a window of its own.
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+        .onOpenURL(perform: receive)
+        // A page handed off from another device.
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            if let url = activity.webpageURL { receive(url) }
+        }
+    }
+
+    private func receive(_ url: URL) {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else { return }
+        if let store {
+            store.openIncoming(url)
+        } else {
+            pendingLinks.append(url)
         }
     }
 }
