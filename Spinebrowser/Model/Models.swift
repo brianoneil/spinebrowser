@@ -88,6 +88,19 @@ enum SpineEntry: Identifiable {
     }
 }
 
+/// A link peeked at without opening a tab: a live page in a card over the other window.
+/// It belongs to one window and never persists.
+struct Glance: Identifiable, Equatable {
+    let id = UUID()
+    var url: URL
+    /// The tab the link came from. Its window keeps focus.
+    var sourceTabID: UUID?
+    /// Where the finger pressed, in screen points, so the card grows from the link.
+    var origin: CGPoint?
+    var isLoading = true
+    var progress: Double = 0
+}
+
 /// What a drag under way is carrying. Never persists.
 enum DragCargo: Equatable {
     /// A tab picked up from the Spine or a window's bar.
@@ -108,6 +121,7 @@ struct BrowserSettings: Codable, Equatable {
     var blocksTrackers = true
     /// At night the desk goes OLED black. Pages and the Spine keep their tone.
     var trueBlackAtNight = false
+    var reader = ReaderPreferences()
 
     init() {}
 
@@ -119,7 +133,45 @@ struct BrowserSettings: Codable, Equatable {
         unloadsIdleTabs = (try? c.decodeIfPresent(Bool.self, forKey: .unloadsIdleTabs)) ?? defaults.unloadsIdleTabs
         blocksTrackers = (try? c.decodeIfPresent(Bool.self, forKey: .blocksTrackers)) ?? defaults.blocksTrackers
         trueBlackAtNight = (try? c.decodeIfPresent(Bool.self, forKey: .trueBlackAtNight)) ?? defaults.trueBlackAtNight
+        reader = (try? c.decodeIfPresent(ReaderPreferences.self, forKey: .reader)) ?? defaults.reader
     }
+}
+
+/// How Reader sets type. Its own theme, so a page can read sepia in a night browser.
+struct ReaderPreferences: Codable, Equatable {
+    enum Theme: String, Codable, CaseIterable, Identifiable {
+        case match, day, sepia, night
+        var id: String { rawValue }
+    }
+
+    enum Face: String, Codable, CaseIterable, Identifiable {
+        case serif, sans
+        var id: String { rawValue }
+    }
+
+    var theme: Theme = .match
+    /// Night pages go OLED black. Reader only; the browser's desk has its own option.
+    var trueBlack = false
+    /// Body size in points, 15 to 24.
+    var size = 18
+    var face: Face = .serif
+
+    static let sizes = 15...24
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = ReaderPreferences()
+        theme = (try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? defaults.theme
+        trueBlack = (try? c.decodeIfPresent(Bool.self, forKey: .trueBlack)) ?? defaults.trueBlack
+        size = ((try? c.decodeIfPresent(Int.self, forKey: .size)) ?? defaults.size).clamped(to: Self.sizes)
+        face = (try? c.decodeIfPresent(Face.self, forKey: .face)) ?? defaults.face
+    }
+}
+
+extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }
 
 /// Live web state that never persists.

@@ -32,10 +32,23 @@ struct OpenFlatLayout: View {
             let corner = geo.containerCornerInsets.topLeading
             // Under the window controls the Space header sits a row below them, not a full corner below.
             let spineTop: CGFloat = ownBar ? max(insets.top + PadToolbar.top, corner.height - 16) : 0
+            // Bent with an article open, Reader takes the whole display: a book when the crease runs
+            // down the middle, a page above a console when it runs across.
+            let crease = Self.activeCrease(in: geo)
+            let reading = isOpenDisplay && !store.isPair
+                ? store.focusedTab.flatMap { store.readerSession(for: $0.id)?.isReady == true ? $0 : nil }
+                : nil
 
             ZStack(alignment: .topLeading) {
                 p.desk
 
+                if let reading, let crease, crease.height > crease.width {
+                    ReaderBook(tab: reading, crease: crease, size: geo.size, trailing: insets.trailing)
+                        .transition(.opacity)
+                } else if let reading, let crease {
+                    ReaderTabletop(tab: reading, crease: crease, size: geo.size, insets: insets)
+                        .transition(.opacity)
+                } else {
                 HStack(spacing: 0) {
                     spine(state: state, width: spineWidth, showsSidebar: showsSidebar)
                         .environment(\.spineTopInset, spineTop)
@@ -66,8 +79,10 @@ struct OpenFlatLayout: View {
                         .environment(\.spineTopInset, spineTop)
                         .padding(.top, ownBar ? 0 : insets.top)
                 }
+                }
             }
             .environment(\.hasFold, hasFold)
+            .onChange(of: isOpenDisplay, initial: true) { _, open in store.hasRoomForPair = open }
             .onChange(of: geo.size.width >= Metrics.sidebarMinimumWidth, initial: true) { _, roomy in
                 // On iPad a window under 1000pt starts in Spines; widen it and the Sidebar comes back.
                 if ownBar { store.fitSpine(roomForSidebar: roomy) }
@@ -96,6 +111,11 @@ struct OpenFlatLayout: View {
     /// The Duo reports its crease, active or not. Anywhere else there's no fold.
     private static func hasFold(in geo: GeometryProxy) -> Bool {
         !geo.reservedRegions(kind: .division, options: [.includeInactive]).isEmpty
+    }
+
+    /// The crease while the device is partly folded, in the layout's coordinates.
+    private static func activeCrease(in geo: GeometryProxy) -> CGRect? {
+        geo.reservedRegions(kind: .division).first?.frame
     }
 
     /// The division region is only active while the device is partly folded.
@@ -277,6 +297,18 @@ private struct PageArea: View {
                             .frame(width: max(0, foldX - lead))
                         TabDropTarget(label: "Open on the right") { store.drop(tab: $0, onSide: 1) }
                     }
+                }
+            }
+            .overlay {
+                // On a single page the Glance takes the far side of the fold, so the page you were
+                // reading stays in view. On the cover it takes the page.
+                GeometryReader { card in
+                    let start = foldX - lead + Metrics.pairGutter / 2
+                    GlanceOverlay(
+                        region: isOpenDisplay
+                            ? CGRect(x: start, y: 0, width: max(0, card.size.width - start), height: card.size.height)
+                            : nil
+                    )
                 }
             }
             .padding(.leading, lead)

@@ -50,6 +50,7 @@ struct SidebarView: View {
                         .onTapGesture {
                             withAnimation(Motion.spring(reduce: reduceMotion)) { store.switchSpace(to: other.id) }
                         }
+                        .contextMenu { SpaceMenu(space: other) }
                 }
             }
         }
@@ -57,6 +58,7 @@ struct SidebarView: View {
         .frame(height: 28)
         .contentShape(Rectangle())
         .gesture(spaceSwipe)
+        .contextMenu { SpaceMenu(space: space) }
     }
 
     /// Horizontal swipe on the header or Essentials switches spaces.
@@ -125,6 +127,7 @@ struct SidebarView: View {
             HStack {
                 SectionLabel(text: "Today", color: space.binding.secondary(p))
                 Spacer()
+                JustShelved(spaceID: space.id)
                 ArchiveCountdown(spaceID: space.id)
             }
             .padding(.leading, 10)
@@ -145,10 +148,13 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func row(_ entry: SpineEntry, binding: SpaceBinding) -> some View {
-        switch entry {
-        case .tab(let tab): TabRow(tab: tab, binding: binding)
-        case .pair(let pair): PairRow(pair: pair, binding: binding)
+        Group {
+            switch entry {
+            case .tab(let tab): TabRow(tab: tab, binding: binding)
+            case .pair(let pair): PairRow(pair: pair, binding: binding)
+            }
         }
+        .transition(.spineRow(shelving: store.isShelving(entry), reduceMotion: reduceMotion))
     }
 
     // MARK: Command
@@ -173,6 +179,19 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+    }
+}
+
+/// Long-press a space: name it, bind it, or start another.
+struct SpaceMenu: View {
+    let space: Space
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        Button("Edit \(space.name)…", systemImage: "paintpalette") { store.editSpace(space.id) }
+        if store.spaces.count < Library.maximumSpaces {
+            Button("New space", systemImage: "plus.square.on.square") { store.newSpace() }
+        }
     }
 }
 
@@ -203,6 +222,33 @@ struct SpaceDot: View {
             .accessibilityElement()
             .accessibilityLabel("\(space.name) space")
             .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Where the tabs went: "2 shelved" in copper for a few seconds after they go. Tap for the archive.
+struct JustShelved: View {
+    let spaceID: UUID
+    @Environment(BrowserStore.self) private var store
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let last = store.library.lastShelved, last.spaceIDs.contains(spaceID),
+               context.date.timeIntervalSince(last.at) < 5 {
+                Button {
+                    store.isArchiveOpen = true
+                } label: {
+                    Label("\(last.count) shelved", systemImage: "archivebox")
+                        .font(Typeface.countdown)
+                        .foregroundStyle(p.time)
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .offset(y: 6)))
+                .accessibilityLabel("\(last.count) tabs moved to the archive. Show the archive")
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: store.library.lastShelved?.at)
     }
 }
 

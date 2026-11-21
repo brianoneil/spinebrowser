@@ -14,7 +14,10 @@ final class BrowserStore {
         didSet {
             // A window coming back doesn't claim its tabs until the library knows it, so it yields
             // to the window already showing them.
-            guard isRegistered, panes.map(\.tabID) != oldValue.map(\.tabID) else { return }
+            guard panes.map(\.tabID) != oldValue.map(\.tabID) else { return }
+            // A Glance belongs to the pages it was opened over. Change them and it goes.
+            if glance != nil { dismissGlance() }
+            guard isRegistered else { return }
             library.window(self, shows: shownTabIDs)
         }
     }
@@ -26,8 +29,14 @@ final class BrowserStore {
     private(set) var shownPairID: UUID?
 
     var isCommandBarOpen = false
+    /// A link peeked at over the other window. One at a time.
+    private(set) var glance: Glance?
+    /// The window can show two pages side by side. The cover and narrow iPad windows can't.
+    @ObservationIgnored var hasRoomForPair = true
     var isSidebarOverlayOpen = false
     var isArchiveOpen = false
+    /// The space being named and bound, if its sheet is up.
+    var editingSpaceID: UUID?
     var isSettingsOpen = false
     /// The URL pill recedes while you read down a page, or when left alone, and comes back on summon.
     private(set) var isAddressHidden = false {
@@ -268,6 +277,17 @@ final class BrowserStore {
         }
         if let candidate { select(candidate.id) }
         library.scheduleSave()
+    }
+
+    /// Makes a space and opens it, ready to be named.
+    func newSpace() {
+        guard let space = library.addSpace(name: "New space", emoji: "✳️") else { return }
+        switchSpace(to: space.id)
+        editingSpaceID = space.id
+    }
+
+    func editSpace(_ spaceID: UUID? = nil) {
+        editingSpaceID = spaceID ?? activeSpace.id
     }
 
     func stepSpace(by delta: Int) {
@@ -560,6 +580,108 @@ final class BrowserStore {
     func setPairSplit(_ split: Double?) {
         guard let shownPairID, pairSplit != split else { return }
         library.updatePair(shownPairID) { $0.split = split }
+    }
+
+    /// Whether this Spine line is on its way to the archive.
+    func isShelving(_ entry: SpineEntry) -> Bool {
+        switch entry {
+        case .tab(let tab): library.shelving.contains(tab.id)
+        case .pair(let pair): pair.tabIDs.contains(where: library.shelving.contains)
+        }
+    }
+
+    // MARK: Reader
+
+    func readerSession(for tabID: UUID?) -> ReaderSession? { tabID.flatMap { library.reader[$0] } }
+    var focusedReader: ReaderSession? { readerSession(for: focusedPane.tabID) }
+    func canRead(_ tabID: UUID?) -> Bool { tabID.map(library.canRead) ?? false }
+
+    /// Opens Reader on a tab, the focused one unless told otherwise, or closes it if it's open.
+    func toggleReader(_ tabID: UUID? = nil) {
+        guard let id = tabID ?? focusedPane.tabID else { return }
+        if library.reader[id] != nil {
+            library.closeReader(id)
+        } else if library.canRead(id) {
+            library.openReader(id)
+        }
+        isAddressHidden = false
+    }
+
+    /// A link followed from Reader leaves Reader and loads in the tab, as it would on the page.
+    func followReaderLink(_ url: URL, in tabID: UUID) {
+        library.closeReader(tabID)
+        engine.load(url, in: tabID)
+        library.touch(tabID)
+    }
+
+    /// Back closes Reader first, then walks the page's history.
+    func goBack() {
+        guard let id = focusedPane.tabID else { return }
+        if library.reader[id] != nil {
+            library.closeReader(id)
+        } else {
+            engine.goBack(id)
+        }
+    }
+
+    var canGoBack: Bool { focusedRuntime.canGoBack || focusedReader != nil }
+
+    // MARK: Glance
+
+    /// Peeks at a link. The card opens over the window across from the page it came from; the page
+    /// you were reading stays in view and keeps focus.
+    func openGlance(_ url: URL, from tabID: UUID?, origin: CGPoint?) {
+        if let old = glance { engine.releaseGlance(old.id) }
+        isCommandBarOpen = false
+        isSidebarOverlayOpen = false
+        glance = Glance(url: url, sourceTabID: tabID, origin: origin)
+        library.windowBecameActive(id)
+    }
+
+    /// Lets the Glance go without a trace: no tab, nothing in Today.
+    func dismissGlance() {
+        guard let leaving = glance else { return }
+        glance = nil
+        // The card fades out first, so its page stays in it until it's gone.
+        Task { [engine] in
+            try? await Task.sleep(for: .milliseconds(450))
+            engine.releaseGlance(leaving.id)
+        }
+    }
+
+    func glanceDidUpdate(url: URL?, isLoading: Bool, progress: Double) {
+        guard var current = glance else { return }
+        if let url { current.url = url }
+        current.isLoading = isLoading
+        current.progress = progress
+        if current != glance { glance = current }
+    }
+
+    /// Which window of the Pair the Glance covers: the one across from its source. On a single page
+    /// it takes the right-hand side.
+    var glanceSide: Int {
+        guard isPair, let source = glance?.sourceTabID, let index = paneIndex(showing: source) else { return 1 }
+        return 1 - index
+    }
+
+    /// Keeps the Glance as a tab, live page and all. In a Pair it takes over the window it covers;
+    /// on a single page it opens a Pair with it on that side. `asPair: false` keeps it as a tab of its own.
+    func keepGlance(asPair: Bool = true) {
+        guard let kept = glance else { return }
+        let side = glanceSide
+        let url = engine.glanceURL(kept.id) ?? kept.url
+        let spaceID = isPair ? panes[side].spaceID : focusedPane.spaceID
+        let tab = library.insertTab(url: url, spaceID: spaceID)
+        engine.adoptGlance(kept.id, as: tab.id)
+        glance = nil
+        if isPair, asPair {
+            place(tab.id, inPane: side)
+        } else if asPair, hasRoomForPair, !isPair {
+            openPair(with: tab.id, onSide: side)
+        } else {
+            select(tab.id)
+        }
+        library.scheduleSave()
     }
 
     // MARK: Drag and drop

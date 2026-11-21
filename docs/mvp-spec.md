@@ -140,16 +140,28 @@ Arc's Cmd-T, reimagined for touch:
 
 ### 4.6 Glance (P1)
 
-Zen's Glance, touch-native:
+Zen's Glance, touch-native. Peek at a link without opening a tab.
 
-- Long-press a link → **Peek** (iOS context-preview style, but a live WKWebView, not a snapshot). Release to dismiss; "Open" button promotes to a real tab in the other pane; "Split" button dedicates a pane.
-- From Essentials/pinned tabs, off-site links auto-open in Glance (Zen behavior) — pinned apps stay stable.
+- **Long-press a link and Glance opens over the other side.** In a Pair it covers the other window; on a single page it takes the far side of the fold; on the cover it takes the page. The card is a live page, not a snapshot, and it grows from the link you pressed (spring response 0.32, scale 0.92 → 1). WebKit's own link menu stays away.
+- **Keep it, or let it go.** "Keep on right" (or left) promotes the peek into that window, live page and scroll intact. On a single page it starts a Pair with the kept tab on that side; on the cover it reads "Keep as tab". Long-press Keep for "Keep as a tab" and "Copy link". Swipe the card's header or foot down, tap ×, or tap the dimmed window and it's gone without a trace in Today.
+- **Focus follows the source.** The window you peeked from keeps its outline, and the system column still acts on it.
+- **Pinned apps never wander.** Off-site links in Essentials and pinned tabs open in Glance on their own. Same site means the same registrable domain: mail.google.com and accounts.google.com stay put.
+- Links followed inside a Glance stay in the card. Reader links peek too (§4.7).
+- Design: Paper page **Modes v2**, board 05 (Glance & command bar).
 
 ### 4.7 Reader mode with two-page layout (P1)
 
-- Standard reader extraction (readability-style), dark/light/sepia.
-- **Book mode** in dual-portrait: content paginated across both screens, two pages per advance (Microsoft two-page pattern); seam masks images.
-- Tabletop posture (half-folded, resting on surface): content on top screen, reading controls/progress on bottom.
+Reader sets the article in New York on its own paper, and it takes the shape of the posture.
+
+- **Offered only where there's an article.** Mozilla's Readability (bundled, Apache-2.0) checks each page as it finishes loading, in its own script world. Where it finds one, the URL pill grows a Reader button. Reader is also in the command bar ("Show Reader"), the Pair window menu, and View ▸ Show Reader (⇧⌘R). Back closes Reader before it walks history.
+- **The page stays loaded underneath.** Leaving Reader puts you back exactly where you were. Following a link from Reader leaves Reader and loads it in the tab; long-press peeks in a Glance. Going to another page closes Reader. Reader is runtime state: a relaunch shows the page.
+- **Flat, or in a window of the Pair:** one scrolling column, 60–66 characters wide, with the chip "Aa · Reader · 6 min left" at the top left. The chip recedes with the pill.
+- **Book (bent, crease down the middle):** the crease becomes the gutter. The article runs across two pages a spread; text keeps 35.5pt off the crease on the left page and 26pt on the right, as Settings does. Folios sit under each page. Tap the outer third of either page, tap a margin, or swipe to turn. Images stay inside a page, so none crosses the gutter. The Spine becomes a thumb index cut into the left page's edge, each tab in its space's cloth and the open one in paper. A Glance or the command bar takes the right-hand page.
+- **Tabletop (bent, crease across):** the page stands on the raised half, one page at a time; everything you touch lies flat. The console has the title, "Page 3 of 12 · 6 min left" in copper, a copper scrubber, big Previous and Next buttons, Aa, and "Show the page".
+- **Type:** Aa sets size 15–24pt (18/29 by day, 18/30 at night), New York or San Francisco, and paper: Match, Day, Sepia or Night. **True black at night** is Reader's own OLED option. Changes reflow in place and keep your page. They're saved with Settings.
+- Time left counts the words still ahead at 230 a minute.
+- The reader page loads only the article, with scripts off and its own cookie-free data store.
+- Design: Paper page **Modes v2**, board 08 (Book · reader with thumb index); the console follows board 09.
 
 ### 4.8 Privacy & blocking (P0)
 
@@ -168,9 +180,10 @@ Zen's Glance, touch-native:
 
 ### 4.10 Theming & craft (P1)
 
-- Per-space accent color + gradient; chrome tints to match (Arc/Zen).
-- Theme: Match system (default), Day or Night. **True black at night** drops the night desk to #000 for OLED; pages and the Spine keep their tone. It's the first Spine Pro feature (§4.11). A reader-only OLED option arrives with Reader mode (§4.7).
-- Motion: spring animations on sidebar reveal, space switch, glance open. Delight budget: one signature animation (Arc's dancing-thumbnail equivalent) — candidate: tabs "shelving" themselves into the archive.
+- **The space is the theme.** Each space wears one of the seven bindings. Its cloth tints the Spine, its Pair bars and its inks. Long-press the space header, a space dot or the strip's space mark for **Edit space** (name, emoji, binding, with a live strip of the cloth) and **New space**, up to eight. The command bar has both. Deleting a space shelves its tabs in the archive, behind a confirmation.
+- Theme: Match system (default), Day or Night. **True black at night** drops the night desk to #000 for OLED; pages and the Spine keep their tone. It's the first Spine Pro feature (§4.11). Reader has its own OLED option (§4.7).
+- Motion: spring animations on sidebar reveal, space switch, glance open. Reduce Motion fades instead.
+- **The signature moment: tabs shelve themselves.** When Today tabs archive, on the timer or with "Archive all Today tabs", each row tilts like a book leaned on its neighbour and slides down onto the shelf, half a second, together. "2 shelved" shows in copper by the Today label for a few seconds; tap it for the archive. A tab you close just fades.
 
 ### 4.11 Settings (P0)
 

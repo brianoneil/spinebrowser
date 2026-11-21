@@ -13,6 +13,9 @@ final class WebEngine: NSObject {
     /// The navigation loading each tab's own saved address. Only that page's icon may stand in for
     /// the address: a pinned tab you've searched from must keep its own icon.
     private var homeNavigations: [UUID: WKNavigation] = [:]
+    /// Live pages peeked at in a Glance, by Glance. They belong to no tab until kept.
+    private var glanceViews: [UUID: WKWebView] = [:]
+    private var glanceObservers: [UUID: [NSKeyValueObservation]] = [:]
     private let configuration = WKWebViewConfiguration()
     private var blocker: ContentBlocker?
     /// Drag position where the pill last changed, so it takes a deliberate pull to flip it back.
@@ -108,6 +111,9 @@ final class WebEngine: NSObject {
         return view
     }
 
+    /// The tab's web view if it's loaded, without loading it.
+    func loadedView(_ tabID: UUID) -> WKWebView? { views[tabID] }
+
     func load(_ url: URL, in tabID: UUID) {
         parked[tabID] = nil
         if let view = views[tabID] {
@@ -155,6 +161,85 @@ final class WebEngine: NSObject {
             view.stopLoading()
             view.removeFromSuperview()
         }
+    }
+
+    // MARK: Glance
+
+    /// The live page in a Glance card, made on first ask.
+    func glanceView(for glance: Glance) -> WKWebView {
+        if let existing = glanceViews[glance.id] { return existing }
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = self
+        view.uiDelegate = self
+        view.allowsBackForwardNavigationGestures = true
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        view.scrollView.contentInsetAdjustmentBehavior = .never
+        glanceViews[glance.id] = view
+        enableDragging(in: view)
+        let id = glance.id
+        let sync: @Sendable (WKWebView) -> Void = { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let view = self.glanceViews[id] else { return }
+                self.library?.glanceDidUpdate(id, url: view.url, isLoading: view.isLoading, progress: view.estimatedProgress)
+            }
+        }
+        glanceObservers[id] = [
+            view.observe(\.url) { view, _ in sync(view) },
+            view.observe(\.isLoading) { view, _ in sync(view) },
+            view.observe(\.estimatedProgress) { view, _ in sync(view) },
+        ]
+        view.load(URLRequest(url: glance.url))
+        return view
+    }
+
+    /// Where the Glance has got to: the link it opened with, or wherever it was followed.
+    func glanceURL(_ id: UUID) -> URL? { glanceViews[id]?.url }
+
+    func releaseGlance(_ id: UUID) {
+        glanceObservers.removeValue(forKey: id)?.forEach { $0.invalidate() }
+        if let view = glanceViews.removeValue(forKey: id) {
+            view.stopLoading()
+            view.removeFromSuperview()
+        }
+    }
+
+    /// Keeping a Glance hands its live page to the new tab, so nothing reloads and the scroll stays put.
+    @discardableResult
+    func adoptGlance(_ id: UUID, as tabID: UUID) -> Bool {
+        glanceObservers.removeValue(forKey: id)?.forEach { $0.invalidate() }
+        guard let view = glanceViews.removeValue(forKey: id) else { return false }
+        parked[tabID] = nil
+        views[tabID] = view
+        view.allowsLinkPreview = true
+        view.isFindInteractionEnabled = true
+        view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanned(_:)))
+        observe(view, tabID: tabID)
+        sync(view, tabID: tabID)
+        return true
+    }
+
+    private func isGlance(_ webView: WKWebView) -> Bool {
+        glanceViews.values.contains { $0 === webView }
+    }
+
+    /// The registrable part of a host, near enough: "mail.google.com" and "accounts.google.com"
+    /// are one site, "bbc.co.uk" keeps its country code.
+    static func site(of host: String) -> String {
+        let labels = host.lowercased().split(separator: ".").map(String.init)
+        guard labels.count > 2 else { return labels.joined(separator: ".") }
+        let shared: Set = ["co", "com", "org", "net", "ac", "gov", "edu", "ne", "or"]
+        let keep = labels[labels.count - 1].count == 2 && shared.contains(labels[labels.count - 2]) ? 3 : 2
+        return labels.suffix(keep).joined(separator: ".")
+    }
+
+    /// Pinned tabs and Essentials stay on their own site. A link off it opens in a Glance.
+    private func glancesOffSite(_ url: URL, from webView: WKWebView) -> UUID? {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              let tabID = tabID(for: webView), let tab = library?.tab(id: tabID), tab.tier != .today,
+              let home = tab.url?.host(), let host = url.host(),
+              Self.site(of: home) != Self.site(of: host) else { return nil }
+        return tabID
     }
 
     /// Reading down the page hides the URL pill; pulling back up, or reaching the top, shows it.
@@ -234,7 +319,13 @@ extension WebEngine: WKNavigationDelegate {
     /// Hands a link the web can't show to the app that handles it. Frames inside a page can't,
     /// so an ad's iframe can't throw you into another app.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-        guard let url = navigationAction.request.url, !Self.isPage(url) else { return .allow }
+        guard let url = navigationAction.request.url else { return .allow }
+        if navigationAction.navigationType == .linkActivated, navigationAction.targetFrame?.isMainFrame ?? false,
+           let tabID = glancesOffSite(url, from: webView) {
+            library?.peek(url, from: tabID, origin: WebContainerView.recentPress)
+            return .cancel
+        }
+        guard !Self.isPage(url) else { return .allow }
         if navigationAction.targetFrame?.isMainFrame ?? true {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
@@ -251,12 +342,22 @@ extension WebEngine: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let tabID = tabID(for: webView), let pageURL = webView.url, let host = pageURL.host() else { return }
+        guard let pageURL = webView.url, let host = pageURL.host() else { return }
+        let tabID = tabID(for: webView)
+        guard tabID != nil || isGlance(webView) else { return }
         // The tab's saved host borrows this icon only when this page is where its address led,
         // redirects included. Anywhere else the tab browses keeps its icon to itself.
-        let isHome = navigation != nil && homeNavigations[tabID] === navigation
-        if isHome { homeNavigations[tabID] = nil }
-        let aliases = isHome ? [library?.tab(id: tabID)?.url?.host()].compactMap { $0 } : []
+        let isHome = navigation != nil && tabID.map { homeNavigations[$0] === navigation } ?? false
+        if isHome, let tabID { homeNavigations[tabID] = nil }
+        let aliases = isHome ? [tabID.flatMap { library?.tab(id: $0)?.url?.host() }].compactMap { $0 } : []
+        if let tabID {
+            // Offer Reader only where there's an article to read.
+            Task { @MainActor [weak self] in
+                let readable = await ReaderExtractor.isReaderable(webView)
+                guard webView.url == pageURL else { return }
+                self?.library?.setReaderable(readable, for: tabID, url: pageURL)
+            }
+        }
         let script = """
         (function () {
           var link = document.querySelector('link[rel~="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]');
@@ -274,7 +375,7 @@ extension WebEngine: WKNavigationDelegate {
     }
 }
 
-extension WebEngine: WKUIDelegate {
+extension WebEngine {
     /// target=_blank and window.open land in a new Today tab instead of a popup.
     func webView(
         _ webView: WKWebView,
@@ -283,12 +384,33 @@ extension WebEngine: WKUIDelegate {
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         guard let url = navigationAction.request.url else { return nil }
-        if Self.isPage(url) {
+        if let tabID = glancesOffSite(url, from: webView) {
+            library?.peek(url, from: tabID, origin: WebContainerView.recentPress)
+        } else if isGlance(webView), Self.isPage(url) {
+            // A Glance stays one page: a new window from it opens in the same card.
+            webView.load(URLRequest(url: url))
+        } else if Self.isPage(url) {
             library?.pageOpened(url, from: tabID(for: webView))
         } else {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         return nil
+    }
+}
+
+extension WebEngine: WKUIDelegate {
+    /// Long-press a link to peek at it in a Glance over the other window. The system menu stays away.
+    func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
+        guard let url = elementInfo.linkURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        if isGlance(webView) {
+            // Inside a Glance, the card follows the link.
+            webView.load(URLRequest(url: url))
+        } else {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            library?.peek(url, from: tabID(for: webView), origin: WebContainerView.recentPress)
+        }
+        // Nil would bring back WebKit's own menu. An empty one shows nothing.
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: []) }
     }
 }
 

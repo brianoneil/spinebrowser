@@ -63,12 +63,15 @@ struct StripView: View {
     @ViewBuilder
     private func item(_ entry: SpineEntry) -> some View {
         let binding = store.activeSpace.binding
-        switch entry {
-        case .pair(let pair):
-            PairStripItem(pair: pair, binding: binding).id(pair.id)
-        case .tab(let tab):
-            tabItem(tab, binding: binding)
+        Group {
+            switch entry {
+            case .pair(let pair):
+                PairStripItem(pair: pair, binding: binding).id(pair.id)
+            case .tab(let tab):
+                tabItem(tab, binding: binding)
+            }
         }
+        .transition(.spineRow(shelving: store.isShelving(entry), reduceMotion: reduceMotion))
     }
 
     @ViewBuilder
@@ -97,6 +100,7 @@ struct StripView: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+        .contextMenu { SpaceMenu(space: space) }
         .padding(.trailing, 6)
         .accessibilityLabel("\(space.name) space. Switch space")
     }

@@ -45,8 +45,8 @@ struct PadToolbar: View {
                 }
             }
             HStack(spacing: 0) {
-                BarIcon(label: "Back", symbol: "chevron.left", isEnabled: runtime.canGoBack) {
-                    if let focusedID { store.engine.goBack(focusedID) }
+                BarIcon(label: "Back", symbol: "chevron.left", isEnabled: store.canGoBack) {
+                    store.goBack()
                 }
                 BarIcon(label: "Forward", symbol: "chevron.right", isEnabled: runtime.canGoForward) {
                     if let focusedID { store.engine.goForward(focusedID) }

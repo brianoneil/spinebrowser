@@ -36,15 +36,23 @@ struct PageCard: View {
             }
             ZStack(alignment: .top) {
                 if let tab, tab.url != nil {
+                    let isReading = store.readerSession(for: tab.id) != nil
                     // While a tab is in flight the page steps out of the way, so the drop lands on the window.
+                    // Under Reader the page stays loaded, out of sight, so leaving Reader puts it back as it was.
                     WebViewHost(
-                        tabID: tab.id, engine: store.engine, isInteractive: !isCarryingTab,
+                        tabID: tab.id, engine: store.engine, isInteractive: !isCarryingTab && !isReading,
                         isWanted: { [weak store] in store?.shownTabIDs.contains(tab.id) ?? false }
                     ) {
                         store.focus(pane: paneIndex)
                     }
                         // A fresh host after browsing data is cleared, so it builds a fresh web view.
                         .id(store.webGeneration)
+                        .opacity(isReading ? 0 : 1)
+                        .accessibilityHidden(isReading)
+                    if isReading {
+                        ReaderPage(tab: tab, paneIndex: paneIndex)
+                            .transition(.opacity)
+                    }
                 } else {
                     StartPage(space: space)
                         .contentShape(Rectangle())
@@ -78,6 +86,12 @@ struct PageCard: View {
             // Exactly one window is focused, outlined in its binding's ink.
             if isPair, isFocused {
                 shape.strokeBorder(space.binding.ink(p), lineWidth: 1.5)
+            }
+        }
+        .overlay {
+            // A Glance opens over the window across from the page it came from.
+            if isPair, store.glanceSide == paneIndex {
+                GlanceOverlay()
             }
         }
         .background {
@@ -147,6 +161,9 @@ struct URLPill: View {
         let insecure = runtime.map { !$0.isSecure } ?? (url?.scheme == "http")
         // A real Button, so the pill wins taps over the web page underneath. It fires on release while
         // the finger is still over the pill, and the pill follows the finger, so drags veto it.
+        let canRead = store.canRead(tab.id)
+        let isReading = store.readerSession(for: tab.id) != nil
+        HStack(spacing: 0) {
         Button {
             guard !isDragging, Date.now >= ignoreTapsUntil else { return }
             store.isCommandBarOpen = true
@@ -176,16 +193,39 @@ struct URLPill: View {
                     .lineLimit(1)
             }
             .padding(.vertical, 7)
-            .padding(.horizontal, 14)
-            .background(p.raised, in: Capsule())
-            .overlay {
-                if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
-            }
-            .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
-            .padding(.vertical, 7)
-            .contentShape(Capsule())
+            .padding(.leading, 14)
+            .padding(.trailing, canRead ? 6 : 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Address, \(host)")
+        .accessibilityHint("Opens the command bar")
+
+            // Reader is offered only where Readability finds an article.
+            if canRead {
+                Button {
+                    withAnimation(Motion.spring(reduce: reduceMotion)) { store.toggleReader(tab.id) }
+                } label: {
+                    Image(systemName: isReading ? "doc.plaintext.fill" : "doc.plaintext")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(isReading ? p.accent : p.textSecondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 4)
+                .accessibilityLabel(isReading ? "Hide Reader" : "Show Reader")
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+        }
+        .background(p.raised, in: Capsule())
+        .overlay {
+            if p.isDark { Capsule().strokeBorder(p.line, lineWidth: 1) }
+        }
+        .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.14), radius: 5, y: 2)
+        .padding(.vertical, 7)
+        .contentShape(Capsule())
+        .animation(Motion.spring(reduce: reduceMotion), value: canRead)
         .offset(y: lift)
         .simultaneousGesture(
             DragGesture(minimumDistance: 16)
@@ -211,8 +251,7 @@ struct URLPill: View {
                 Button("Copy link", systemImage: "link") { UIPasteboard.general.url = url }
             }
         }
-        .accessibilityLabel("Address, \(host)")
-        .accessibilityHint("Opens the command bar")
+        .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Hide address") { store.hideAddress() }
     }
 }
@@ -281,6 +320,12 @@ struct PairBar: View {
                 Menu {
                     Button("Reload", systemImage: "arrow.clockwise") {
                         if let tab { store.engine.reload(tab.id) }
+                    }
+                    if let tab, store.canRead(tab.id) {
+                        let reading = store.readerSession(for: tab.id) != nil
+                        Button(reading ? "Hide Reader" : "Show Reader", systemImage: "doc.plaintext") {
+                            withAnimation(Motion.spring(reduce: reduceMotion)) { store.toggleReader(tab.id) }
+                        }
                     }
                     Button("Swap sides", systemImage: "arrow.left.arrow.right") {
                         withAnimation(Motion.spring(reduce: reduceMotion)) { store.swapPair() }

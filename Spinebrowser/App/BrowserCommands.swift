@@ -34,12 +34,16 @@ struct BrowserCommands: Commands {
             Button("Actual Size") { act { $0.engine.zoom($1, by: nil) } }
                 .keyboardShortcut("0")
                 .disabled(focusedTabID == nil)
+            Divider()
+            Button(store?.focusedReader != nil ? "Hide Reader" : "Show Reader") { store?.toggleReader() }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(!(store?.canRead(store?.focusedPane.tabID) ?? false))
         }
 
         CommandMenu("History") {
-            Button("Back") { act { $0.engine.goBack($1) } }
+            Button("Back") { store?.goBack() }
                 .keyboardShortcut("[")
-                .disabled(!(store?.focusedRuntime.canGoBack ?? false))
+                .disabled(!(store?.canGoBack ?? false))
             Button("Forward") { act { $0.engine.goForward($1) } }
                 .keyboardShortcut("]")
                 .disabled(!(store?.focusedRuntime.canGoForward ?? false))

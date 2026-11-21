@@ -272,6 +272,9 @@ struct CommandResult: Identifiable {
         case showSettings
         case newTab
         case spine(SpineState)
+        case reader(UUID)
+        case editSpace
+        case newSpace
     }
 
     let id: String
@@ -625,6 +628,12 @@ enum CommandModel {
     /// Every command that applies right now, in the order an empty bar suggests them.
     private static func commands(in store: BrowserStore) -> [CommandResult] {
         var commands: [CommandResult] = []
+        if let tab = store.focusedTab, tab.url != nil, store.canRead(tab.id) {
+            let reading = store.readerSession(for: tab.id) != nil
+            commands.append(CommandResult(
+                id: "reader", kind: .reader(tab.id), title: reading ? "Hide Reader" : "Show Reader", symbol: "doc.plaintext"
+            ))
+        }
         if let tab = store.focusedTab, tab.url != nil {
             let short = tab.host ?? tab.displayTitle
             switch tab.tier {
@@ -656,6 +665,13 @@ enum CommandModel {
         ))
         commands.append(CommandResult(id: "archive", kind: .showArchive, title: "Show the archive", symbol: "clock"))
         commands.append(CommandResult(id: "settings", kind: .showSettings, title: "Settings", symbol: "slider.horizontal.3"))
+        commands.append(CommandResult(
+            id: "edit-space", kind: .editSpace, title: "Edit \(store.activeSpace.name)", subtitle: "Name, emoji and binding",
+            symbol: "paintpalette"
+        ))
+        if store.spaces.count < Library.maximumSpaces {
+            commands.append(CommandResult(id: "new-space", kind: .newSpace, title: "New space", symbol: "plus.square.on.square"))
+        }
         if !store.isPair {
             commands.append(CommandResult(id: "spine-sidebar", kind: .spine(.sidebar), title: "Spine: Sidebar", symbol: "sidebar.left"))
             commands.append(CommandResult(id: "spine-spines", kind: .spine(.spines), title: "Spine: Spines", symbol: "books.vertical"))
@@ -702,6 +718,9 @@ enum CommandModel {
         case .showSettings: store.isSettingsOpen = true
         case .newTab: store.newTab()
         case .spine(let state): store.setSpine(state)
+        case .reader(let id): store.toggleReader(id)
+        case .editSpace: store.editSpace()
+        case .newSpace: store.newSpace()
         }
     }
 
@@ -711,8 +730,12 @@ enum CommandModel {
         let hay = Array(candidate.lowercased())
         guard !needle.isEmpty else { return 0 }
         if let range = candidate.lowercased().range(of: query.lowercased()) {
+            // Any unbroken run counts as a strong match; starting the name or a word counts more,
+            // and a shorter name wins a tie.
             let atStart = range.lowerBound == candidate.startIndex
-            return 1000 + (atStart ? 200 : 0) - hay.count
+            let lower = candidate.lowercased()
+            let atWord = !atStart && lower[lower.index(before: range.lowerBound)] == " "
+            return 1000 + (atStart ? 200 : atWord ? 100 : 0) + max(0, 100 - hay.count)
         }
         var score = 0
         var h = 0

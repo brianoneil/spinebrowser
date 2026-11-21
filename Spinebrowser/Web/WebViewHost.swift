@@ -24,6 +24,13 @@ struct WebViewHost: UIViewRepresentable {
 }
 
 final class WebContainerView: UIView, UIGestureRecognizerDelegate {
+    /// Where a finger last pressed and held on a page, in screen points. A Glance grows from it.
+    private static var lastPress: (point: CGPoint, at: Date)?
+    static var recentPress: CGPoint? {
+        guard let lastPress, Date.now.timeIntervalSince(lastPress.at) < 2 else { return nil }
+        return lastPress.point
+    }
+
     var onTouch: () -> Void = {}
     var isWanted: () -> Bool = { true }
     private weak var current: WKWebView?
@@ -35,6 +42,12 @@ final class WebContainerView: UIView, UIGestureRecognizerDelegate {
         tap.cancelsTouchesInView = false
         tap.delegate = self
         addGestureRecognizer(tap)
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:)))
+        press.minimumPressDuration = 0.2
+        press.cancelsTouchesInView = false
+        press.delaysTouchesBegan = false
+        press.delegate = self
+        addGestureRecognizer(press)
         // A page shows in one window at a time. Another window may have held it while this one
         // was in the background; coming back, this window takes its page back.
         NotificationCenter.default.addObserver(
@@ -74,6 +87,11 @@ final class WebContainerView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func touched() { onTouch() }
+
+    @objc private func pressed(_ press: UILongPressGestureRecognizer) {
+        guard press.state == .began else { return }
+        Self.lastPress = (press.location(in: nil), .now)
+    }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,

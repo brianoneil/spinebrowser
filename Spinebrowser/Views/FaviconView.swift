@@ -27,6 +27,14 @@ struct FaviconView: View {
         self.size = size
     }
 
+    init(host: String?, title: String, size: CGFloat = 20) {
+        self.host = host
+        self.title = title
+        tileHex = nil
+        glyph = nil
+        self.size = size
+    }
+
     init(visit: Visit, size: CGFloat = 20) {
         host = visit.host
         title = visit.displayTitle

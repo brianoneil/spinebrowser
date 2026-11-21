@@ -116,6 +116,32 @@ enum Motion {
     }
 }
 
+/// The one flourish: a Today tab tilts like a book leaned on its neighbour and slides down onto the
+/// archive shelf. Half a second, earned daily.
+struct ShelveEffect: ViewModifier {
+    /// 0 on the Spine, 1 on the shelf.
+    let progress: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(-9 * progress), anchor: .bottomLeading)
+            .scaleEffect(1 - 0.1 * progress, anchor: .bottomLeading)
+            .offset(x: 14 * progress, y: 30 * progress)
+            .opacity(1 - progress)
+    }
+}
+
+extension AnyTransition {
+    /// Rows leaving for the archive shelve; anything else fades. Reduce Motion fades both.
+    static func spineRow(shelving: Bool, reduceMotion: Bool) -> AnyTransition {
+        guard shelving, !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity,
+            removal: .modifier(active: ShelveEffect(progress: 1), identity: ShelveEffect(progress: 0))
+        )
+    }
+}
+
 /// SF Pro runs the interface on Apple text styles; New York tells the story.
 enum Typeface {
     static let spaceTitle = Font.system(.title2, design: .serif).weight(.semibold)

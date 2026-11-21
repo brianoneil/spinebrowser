@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// What every window shares: spaces, tabs, Pairs, the archive, settings and the live web views.
 /// Each window keeps its own place among them in a `BrowserStore`.
@@ -29,6 +30,14 @@ final class Library {
     private(set) var recentlyClosed: [ArchivedTab] = []
     /// Pages visited, per Space. Kept in its own file.
     private(set) var history = HistoryPersistence.load()
+    /// Tabs whose page has an article to read, by the address it was found on.
+    private(set) var readerable: [UUID: URL] = [:]
+    /// Tabs showing Reader. Runtime only.
+    private(set) var reader: [UUID: ReaderSession] = [:]
+    /// Tabs on their way to the archive. Their rows tilt onto the shelf as they go.
+    private(set) var shelving: Set<UUID> = []
+    /// The last tabs to shelve, by space, so the Spine can say how many just went.
+    private(set) var lastShelved: (spaceIDs: Set<UUID>, count: Int, at: Date)?
 
     @ObservationIgnored private var windows: [UUID: WeakWindow] = [:]
     /// Window states kept on disk, by window. A window that comes back picks up its own.
@@ -212,9 +221,71 @@ final class Library {
         pairs.removeAll { $0.tabIDs.contains(tabID) }
         engine.discard(tabID)
         runtime[tabID] = nil
+        forgetReader(tabID)
         tabs.removeAll { $0.id == tabID }
         reconcileWindows()
         scheduleSave()
+    }
+
+    // MARK: Reader
+
+    /// Whether Reader can open on this tab: it's open already, or its page has an article.
+    func canRead(_ tabID: UUID) -> Bool {
+        if reader[tabID] != nil { return true }
+        guard let found = readerable[tabID] else { return false }
+        return Self.samePage(found, runtime[tabID]?.currentURL)
+    }
+
+    func setReaderable(_ readable: Bool, for tabID: UUID, url: URL) {
+        if readable {
+            if readerable[tabID] != url { readerable[tabID] = url }
+        } else if readerable[tabID] != nil {
+            readerable[tabID] = nil
+        }
+    }
+
+    /// Pulls the article out of the tab's live page and sets it in type. The page stays loaded
+    /// underneath, so leaving Reader puts you back exactly where you were.
+    func openReader(_ tabID: UUID) {
+        guard reader[tabID] == nil, let view = engine.loadedView(tabID) else { return }
+        reader[tabID] = ReaderSession(url: view.url)
+        Task { @MainActor [weak self] in
+            let article = await ReaderExtractor.extract(from: view)
+            guard let self, self.reader[tabID] != nil else { return }
+            if let article {
+                self.reader[tabID]?.article = article
+            } else {
+                self.reader[tabID]?.failed = true
+            }
+        }
+    }
+
+    func closeReader(_ tabID: UUID) {
+        reader[tabID] = nil
+    }
+
+    /// The reader page reports where you are as you read or turn.
+    func readerMoved(_ tabID: UUID, progress: Double, page: Int, pages: Int) {
+        guard var session = reader[tabID] else { return }
+        session.progress = progress
+        session.page = page
+        session.pages = pages
+        if session != reader[tabID] { reader[tabID] = session }
+    }
+
+    private func forgetReader(_ tabID: UUID) {
+        reader[tabID] = nil
+        readerable[tabID] = nil
+    }
+
+    /// The same page, give or take a #fragment.
+    static func samePage(_ a: URL?, _ b: URL?) -> Bool {
+        guard let a, let b else { return false }
+        var x = URLComponents(url: a, resolvingAgainstBaseURL: false)
+        var y = URLComponents(url: b, resolvingAgainstBaseURL: false)
+        x?.fragment = nil
+        y?.fragment = nil
+        return x?.url == y?.url
     }
 
     func setTier(_ tier: TabTier, for tabID: UUID, spaceID fallbackSpace: UUID) {
@@ -244,6 +315,46 @@ final class Library {
         guard let i = tabs.firstIndex(where: { $0.id == tabID }), tabs[i].tier != .essential else { return }
         tabs[i].spaceID = spaceID
         liveWindows.forEach { $0.tabMoved(tabID, to: spaceID) }
+        scheduleSave()
+    }
+
+    // MARK: Spaces
+
+    static let maximumSpaces = 8
+
+    /// A new space, in the first binding no other space wears. Nil once there are eight.
+    func addSpace(name: String, emoji: String, binding: SpaceBinding? = nil) -> Space? {
+        guard spaces.count < Self.maximumSpaces else { return nil }
+        let worn = Set(spaces.map(\.binding))
+        let cloth = binding ?? SpaceBinding.allCases.first { !worn.contains($0) } ?? .graphite
+        let space = Space(name: name, emoji: emoji, binding: cloth)
+        spaces.append(space)
+        scheduleSave()
+        return space
+    }
+
+    func updateSpace(_ spaceID: UUID, _ change: (inout Space) -> Void) {
+        guard let i = spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+        var next = spaces[i]
+        change(&next)
+        next.name = next.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if next.name.isEmpty { next.name = spaces[i].name }
+        guard next != spaces[i] else { return }
+        spaces[i] = next
+        scheduleSave()
+    }
+
+    /// Deleting a space shelves its tabs, so nothing in it is lost: the archive keeps them.
+    /// Windows in it move to the space before it.
+    func deleteSpace(_ spaceID: UUID) {
+        guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+        let fallback = spaces[index == 0 ? 1 : index - 1].id
+        for window in liveWindows where window.focusedPane.spaceID == spaceID || window.panes.contains(where: { $0.spaceID == spaceID }) {
+            window.switchSpace(to: fallback)
+        }
+        tabs.filter { $0.spaceID == spaceID }.forEach(shelve)
+        spaces.remove(at: index)
+        reconcileWindows()
         scheduleSave()
     }
 
@@ -354,16 +465,32 @@ final class Library {
             $0.tier == .today && !shown.contains($0.id) && now.timeIntervalSince($0.lastActiveAt) >= interval
         }
         guard !expired.isEmpty else { return }
-        expired.forEach(shelve)
-        reconcileWindows()
-        scheduleSave()
+        shelveTogether(expired)
     }
 
     func archiveAllToday(in spaceID: UUID) {
         let shown = shownTabIDs
-        today(in: spaceID).filter { !shown.contains($0.id) }.forEach(shelve)
-        reconcileWindows()
-        scheduleSave()
+        shelveTogether(today(in: spaceID).filter { !shown.contains($0.id) })
+    }
+
+    /// The signature moment: rows learn they're shelving first, so they leave with the tilt,
+    /// then go together half a second later.
+    private func shelveTogether(_ leaving: [BrowserTab]) {
+        guard !leaving.isEmpty else { return }
+        let ids = Set(leaving.map(\.id))
+        shelving.formUnion(ids)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(40))
+            guard let self else { return }
+            let still = self.tabs.filter { ids.contains($0.id) }
+            withAnimation(.timingCurve(0.5, 0, 0.3, 1, duration: 0.5)) {
+                still.forEach(self.shelve)
+                self.reconcileWindows()
+                self.lastShelved = (Set(still.compactMap(\.spaceID)), still.count, .now)
+            }
+            self.shelving.subtract(ids)
+            self.scheduleSave()
+        }
     }
 
     /// A Pair's tabs are shown and touched together, so they come due together. A pinned partner
@@ -372,6 +499,7 @@ final class Library {
         pairs.removeAll { $0.tabIDs.contains(tab.id) }
         engine.discard(tab.id)
         runtime[tab.id] = nil
+        forgetReader(tab.id)
         tabs.removeAll { $0.id == tab.id }
         guard let url = tab.url else { return }
         archive.insert(
@@ -436,7 +564,14 @@ final class Library {
         guard let i = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         let previous = runtime[tabID]?.currentURL
         // A new page brings the pill back so you can see where you landed.
-        if previous != state.currentURL { setAddressHidden(false, for: tabID) }
+        if previous != state.currentURL {
+            setAddressHidden(false, for: tabID)
+            // Reader belongs to the page it opened on. Somewhere new, the page shows.
+            if let session = reader[tabID], state.currentURL != nil, !Self.samePage(session.url, state.currentURL) {
+                reader[tabID] = nil
+            }
+            if let found = readerable[tabID], !Self.samePage(found, state.currentURL) { readerable[tabID] = nil }
+        }
         recordVisit(tabID, from: previous, title: title, state: state)
         if runtime[tabID] != state { runtime[tabID] = state }
         var changed = false
@@ -477,6 +612,16 @@ final class Library {
     func pageOpened(_ url: URL, from tabID: UUID?) {
         let window = tabID.flatMap(window(showing:)) ?? activeWindow
         window?.newTab(url: url)
+    }
+
+    /// A link to peek at opens in a Glance in the window showing the page it came from.
+    func peek(_ url: URL, from tabID: UUID?, origin: CGPoint?) {
+        let window = tabID.flatMap(window(showing:)) ?? activeWindow
+        window?.openGlance(url, from: tabID, origin: origin)
+    }
+
+    func glanceDidUpdate(_ id: UUID, url: URL?, isLoading: Bool, progress: Double) {
+        liveWindows.first { $0.glance?.id == id }?.glanceDidUpdate(url: url, isLoading: isLoading, progress: progress)
     }
 
     func pageDragged(_ began: Bool, from tabID: UUID) {

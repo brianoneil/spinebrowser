@@ -103,6 +103,14 @@ struct RootView: View {
         }
         .environment(\.palette, palette)
         .tint(palette.accent)
+        .sheet(item: Binding(
+            get: { store.editingSpaceID.map(SpaceSheetID.init) },
+            set: { store.editingSpaceID = $0?.id }
+        )) { sheet in
+            SpaceEditor(spaceID: sheet.id)
+                .environment(store)
+                .environment(\.palette, palette)
+        }
         .sheet(isPresented: $store.isArchiveOpen) {
             ArchiveView()
                 .environment(store)
@@ -144,9 +152,9 @@ extension RootView {
         let focusedID = store.focusedPane.tabID
         ToolbarItemGroup(placement: .topBarLeading) {
             Button("Back", systemImage: "chevron.left") {
-                if let focusedID { store.engine.goBack(focusedID) }
+                withAnimation(spring) { store.goBack() }
             }
-            .disabled(!runtime.canGoBack)
+            .disabled(!store.canGoBack)
             .tint(palette.text)
             Button("Forward", systemImage: "chevron.right") {
                 if let focusedID { store.engine.goForward(focusedID) }
