@@ -175,7 +175,9 @@ enum SpineMetrics {
     static let bottom: CGFloat = Platform.isMac ? 16 : 22
     /// From the Spine's top inset down to the Space header, or to the strip's Space mark.
     static let sidebarTop: CGFloat = 30
-    static let stripTop: CGFloat = Platform.isMac ? 30 : 40
+    /// Under the app's own bar the Space mark centres on the Sidebar's Space title, so the Space
+    /// stays at one height as the Spine changes width.
+    static let stripTop: CGFloat = Platform.drawsOwnToolbar ? 28 : 40
     static let rowVertical: CGFloat = Platform.isMac ? 8 : 9
     /// Rows and section labels share this inset, so labels line up with the favicons.
     static let rowInset: CGFloat = Platform.isMac ? 8 : 10

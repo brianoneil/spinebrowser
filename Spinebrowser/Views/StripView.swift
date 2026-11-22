@@ -38,7 +38,8 @@ struct StripView: View {
                 // A Pair on screen scrolls to its item; a tab on its own scrolls to itself.
                 .onChange(of: store.shownPairID ?? store.focusedPane.tabID, initial: true) { _, anchor in
                     guard let anchor else { return }
-                    withAnimation(Motion.spring(reduce: reduceMotion)) { scroller.scrollTo(anchor, anchor: .center) }
+                    // Only as far as it takes to show it, so the first spines aren't clipped for no reason.
+                    withAnimation(Motion.spring(reduce: reduceMotion)) { scroller.scrollTo(anchor) }
                 }
             }
             expand(binding)
