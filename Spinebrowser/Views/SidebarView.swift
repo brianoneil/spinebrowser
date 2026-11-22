@@ -23,10 +23,10 @@ struct SidebarView: View {
             .scrollIndicators(.hidden)
             commandField(binding)
         }
-        .padding(.top, 30 + spineTopInset)
-        .padding(.leading, 18)
-        .padding(.trailing, 16)
-        .padding(.bottom, 22)
+        .padding(.top, SpineMetrics.sidebarTop + spineTopInset)
+        .padding(.leading, SpineMetrics.leading)
+        .padding(.trailing, SpineMetrics.trailing)
+        .padding(.bottom, SpineMetrics.bottom)
         .frame(width: Metrics.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(
@@ -46,7 +46,8 @@ struct SidebarView: View {
             Spacer(minLength: 8)
             HStack(spacing: 8) {
                 ForEach(store.spaces) { other in
-                    SpaceDot(space: other, isActive: other.id == space.id, ground: space.binding.tint(p))
+                    SpaceDot(space: other, isActive: other.id == space.id, ground: space.binding.tint(p),
+                             activeSize: SpineMetrics.spaceDot)
                         .onTapGesture {
                             withAnimation(Motion.spring(reduce: reduceMotion)) { store.switchSpace(to: other.id) }
                         }
@@ -75,8 +76,10 @@ struct SidebarView: View {
     // MARK: Essentials
 
     private func essentials(_ binding: SpaceBinding) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
-        return LazyVGrid(columns: columns, spacing: 8) {
+        let gap = SpineMetrics.essentialGap
+        let radius = SpineMetrics.essentialRadius
+        let columns = Array(repeating: GridItem(.flexible(), spacing: gap), count: 4)
+        return LazyVGrid(columns: columns, spacing: gap) {
             ForEach(store.essentials) { tab in
                 let isShown = store.paneIndex(showing: tab.id) != nil
                 Button {
@@ -84,11 +87,11 @@ struct SidebarView: View {
                 } label: {
                     FaviconView(tab: tab, size: 22)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(p.raised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .frame(height: SpineMetrics.essentialHeight)
+                        .background(p.raised, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
                         .overlay {
                             if isShown {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                RoundedRectangle(cornerRadius: radius, style: .continuous)
                                     .strokeBorder(binding.ink(p), lineWidth: 1.5)
                             }
                         }
@@ -112,7 +115,7 @@ struct SidebarView: View {
         if !entries.isEmpty || store.drag != nil {
             VStack(alignment: .leading, spacing: 2) {
                 SectionLabel(text: "Pinned", color: space.binding.secondary(p))
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, SpineMetrics.rowInset)
                     .padding(.bottom, 6)
                 if entries.isEmpty { PinPlaceholder() }
                 ForEach(entries) { row($0, binding: space.binding) }
@@ -130,7 +133,7 @@ struct SidebarView: View {
                 JustShelved(spaceID: space.id)
                 ArchiveCountdown(spaceID: space.id)
             }
-            .padding(.leading, 10)
+            .padding(.leading, SpineMetrics.rowInset)
             .padding(.trailing, 6)
             .padding(.bottom, 6)
             .frame(minHeight: 28)
@@ -139,8 +142,8 @@ struct SidebarView: View {
                 Text("Nothing open today.")
                     .font(Typeface.footnote)
                     .foregroundStyle(space.binding.secondary(p))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 9)
+                    .padding(.horizontal, SpineMetrics.rowInset)
+                    .padding(.vertical, SpineMetrics.rowVertical)
             }
             ForEach(entries) { row($0, binding: space.binding) }
         }
@@ -164,18 +167,30 @@ struct SidebarView: View {
             store.isSidebarOverlayOpen = false
             store.isCommandBarOpen = true
         } label: {
-            HStack(spacing: 8) {
+            let label = HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: Platform.isMac ? 12 : 13, weight: .bold))
                     .foregroundStyle(binding.ink(p))
                 Text("Search or command")
-                    .font(Typeface.row)
-                    .foregroundStyle(p.textSecondary)
+                    .font(Platform.isMac ? Typeface.footnote : Typeface.row)
+                    .foregroundStyle(Platform.isMac ? binding.secondary(p) : p.textSecondary)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 11)
-            .padding(.horizontal, 14)
-            .background(p.raised, in: Capsule())
+            if Platform.isMac {
+                // A quiet field on the cloth, the height of a row.
+                let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+                label
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(p.raised.opacity(0.55), in: shape)
+                    .overlay { shape.strokeBorder(binding.secondary(p).opacity(0.16), lineWidth: 1) }
+                    .contentShape(shape)
+            } else {
+                label
+                    .padding(.vertical, 11)
+                    .padding(.horizontal, 14)
+                    .background(p.raised, in: Capsule())
+            }
         }
         .buttonStyle(.plain)
         .pointerLift()
@@ -312,8 +327,8 @@ struct TabRow: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, 9)
-            .padding(.horizontal, 10)
+            .padding(.vertical, SpineMetrics.rowVertical)
+            .padding(.horizontal, SpineMetrics.rowInset)
             .background {
                 if isActive {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)

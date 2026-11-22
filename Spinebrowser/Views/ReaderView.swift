@@ -390,13 +390,15 @@ struct ReaderPage: View {
         let tone = ReaderTone(preferences, isDark: p.isDark)
         GeometryReader { geo in
             // On a narrow page the chip sits under the pill instead of beside it.
-            let narrow = geo.size.width < 560 && !store.isPair
+            // The Mac keeps the address in the bar, so there's no pill here to clear.
+            let inBar = Platform.isMac && !store.isPair
+            let narrow = geo.size.width < 560 && !store.isPair && !inBar
             ZStack(alignment: .topLeading) {
                 Color(hex: tone.background)
                 if let article = session?.article {
                     ReaderWebView(
                         tabID: tab.id, engine: store.engine, article: article, tone: tone, preferences: preferences, flow: .scroll,
-                        start: session?.progress ?? 0, topInset: narrow ? 112 : 76,
+                        start: session?.progress ?? 0, topInset: narrow ? 112 : (inBar ? 56 : 76),
                         onState: { progress, page, pages in
                             store.library.readerMoved(tab.id, progress: progress, page: page, pages: pages)
                         },

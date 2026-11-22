@@ -29,6 +29,12 @@ enum DebugSnapshot {
             for child in node.subviews { walk(child, depth: depth + 1) }
         }
         walk(view, depth: 0)
+        // The window controls, measured from the window's top-left like everything above.
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = window.standardWindowButton(kind) else { continue }
+            let frame = button.convert(button.bounds, to: nil)
+            tree += "WindowButton (\(frame.minX), \(window.frame.height - frame.maxY), \(frame.width), \(frame.height))\n"
+        }
         try? tree.write(toFile: path + ".txt", atomically: true, encoding: .utf8)
 
         // Render the layer tree. SwiftUI's hosting view is layer-backed, so this catches the

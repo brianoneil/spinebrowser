@@ -174,19 +174,63 @@ private struct PointerLift: ViewModifier {
 }
 
 #if os(macOS)
-/// Gives the hidden-title-bar window a floor and keeps its cloth draggable.
+/// Gives the hidden-title-bar window a floor, keeps its cloth draggable, and sets the traffic
+/// lights where the boards have them: inset over the cloth, on the bar's row.
 struct MacWindowConfigurator: NSViewRepresentable {
+    /// The close button's leading edge, and the lights' top edge, from the window's corner.
+    static let lightsLeading: CGFloat = 20
+    static let lightsTop: CGFloat = 17
+    static let lightsPitch: CGFloat = 23
+
+    final class Coordinator {
+        var observers: [NSObjectProtocol] = []
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        let coordinator = context.coordinator
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.minSize = NSSize(width: 480, height: 600)
             window.isMovableByWindowBackground = true
+            Self.placeLights(in: window)
+            // AppKit puts the lights back whenever it lays the title bar out again.
+            let names: [Notification.Name] = [
+                NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+                NSWindow.didExitFullScreenNotification, NSWindow.didBecomeKeyNotification,
+                NSWindow.didChangeScreenNotification,
+            ]
+            coordinator.observers = names.map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
+                    MainActor.assumeIsolated {
+                        if let window { Self.placeLights(in: window) }
+                    }
+                }
+            }
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private static func placeLights(in window: NSWindow) {
+        // Full screen has its own title bar; leave it alone.
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let isRTL = window.windowTitlebarLayoutDirection == .rightToLeft
+        for (index, kind) in kinds.enumerated() {
+            guard let button = window.standardWindowButton(kind), let bar = button.superview else { continue }
+            let x = lightsLeading + CGFloat(index) * lightsPitch
+            let y = bar.isFlipped ? lightsTop : bar.bounds.height - lightsTop - button.frame.height
+            button.setFrameOrigin(NSPoint(
+                x: isRTL ? bar.bounds.width - x - button.frame.width : x,
+                y: y
+            ))
+        }
+    }
 }
 #endif
 

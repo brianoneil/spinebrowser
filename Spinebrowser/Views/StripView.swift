@@ -43,7 +43,7 @@ struct StripView: View {
             }
             expand(binding)
         }
-        .padding(.top, 40 + spineTopInset)
+        .padding(.top, SpineMetrics.stripTop + spineTopInset)
         .padding(.bottom, 16)
         .padding(.leading, 6)
         .frame(width: Metrics.stripWidth)

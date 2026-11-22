@@ -144,6 +144,17 @@ extension AnyTransition {
 
 /// SF Pro runs the interface on Apple text styles; New York tells the story.
 enum Typeface {
+    #if os(macOS)
+    // The Mac's text styles run several points smaller than iOS's (Subheadline is 11, Footnote 10),
+    // so the Spine takes the sizes from the Mac boards instead.
+    static let spaceTitle = Font.system(size: 22, weight: .semibold, design: .serif)
+    static let row = Font.system(size: 14)
+    static let rowActive = Font.system(size: 14, weight: .semibold)
+    static let footnote = Font.system(size: 12)
+    static let footnoteStrong = Font.system(size: 12, weight: .semibold)
+    static let sectionLabel = Font.system(size: 11, weight: .semibold)
+    static let countdown = Font.system(size: 11, weight: .semibold).monospacedDigit()
+    #else
     static let spaceTitle = Font.system(.title2, design: .serif).weight(.semibold)
     static let row = Font.subheadline
     static let rowActive = Font.subheadline.weight(.semibold)
@@ -151,6 +162,24 @@ enum Typeface {
     static let footnoteStrong = Font.footnote.weight(.semibold)
     static let sectionLabel = Font.caption2.weight(.semibold)
     static let countdown = Font.caption2.weight(.semibold).monospacedDigit()
+    #endif
+}
+
+/// The Spine's spacing. Touch needs taller rows and wider margins than the Mac's pointer.
+enum SpineMetrics {
+    static let leading: CGFloat = Platform.isMac ? 16 : 18
+    static let trailing: CGFloat = Platform.isMac ? 14 : 16
+    static let bottom: CGFloat = Platform.isMac ? 16 : 22
+    /// From the Spine's top inset down to the Space header, or to the strip's Space mark.
+    static let sidebarTop: CGFloat = 30
+    static let stripTop: CGFloat = Platform.isMac ? 30 : 40
+    static let rowVertical: CGFloat = Platform.isMac ? 8 : 9
+    /// Rows and section labels share this inset, so labels line up with the favicons.
+    static let rowInset: CGFloat = Platform.isMac ? 8 : 10
+    static let essentialHeight: CGFloat = Platform.isMac ? 48 : 50
+    static let essentialRadius: CGFloat = Platform.isMac ? 12 : 14
+    static let essentialGap: CGFloat = Platform.isMac ? 10 : 8
+    static let spaceDot: CGFloat = Platform.isMac ? 10 : 16
 }
 
 struct SectionLabel: View {

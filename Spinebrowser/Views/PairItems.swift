@@ -54,8 +54,8 @@ struct PairRow: View {
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.vertical, 9)
-                .padding(.horizontal, 10)
+                .padding(.vertical, SpineMetrics.rowVertical + 1)
+                .padding(.horizontal, SpineMetrics.rowInset)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

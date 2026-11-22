@@ -35,7 +35,7 @@ struct OpenFlatLayout: View {
             let flush = Platform.isMac && !showsPair
             let corner = geo.containerCornerInsets.topLeading
             // Under the window controls the Space header sits a row below them, not a full corner below.
-            let spineTop: CGFloat = Platform.isMac ? 28
+            let spineTop: CGFloat = Platform.isMac ? 26
                 : (ownBar ? max(top + PadToolbar.top, corner.height - 16) : 0)
             // Bent with an article open, Reader takes the whole display: a book when the crease runs
             // down the middle, a page above a console when it runs across.
