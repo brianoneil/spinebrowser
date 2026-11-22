@@ -154,6 +154,7 @@ private struct SettingsSpread: View {
 
             VStack(alignment: .leading, spacing: 28) {
                 AppearanceSection().alignmentGuide(.firstSection) { $0[.top] }
+                ExtensionsSection()
                 AboutSection()
                 Colophon()
             }
@@ -172,6 +173,7 @@ private struct SettingsStack: View {
             DefaultBrowserSection()
             #endif
             PrivacySection()
+            ExtensionsSection()
             ProSection()
             AboutSection()
             Colophon()
@@ -322,6 +324,37 @@ private struct PrivacySection: View {
                 isOn: store.settingBinding(\.blocksTrackers)
             )
             ClearDataRow()
+        }
+    }
+}
+
+/// Chrome extensions: the ones added, each with a switch, and the way to more.
+private struct ExtensionsSection: View {
+    @Environment(BrowserStore.self) private var store
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        let extensions = store.library.extensions
+        SettingsSection(title: "Extensions") {
+            ForEach(extensions.installed) { entry in
+                ToggleRow(
+                    title: entry.name,
+                    detail: "\(entry.access) Version \(entry.version).",
+                    isOn: Binding { entry.isEnabled } set: { extensions.setEnabled($0, for: entry.id) }
+                )
+                .contextMenu {
+                    Button("Remove", systemImage: "trash", role: .destructive) { extensions.remove(entry.id) }
+                }
+            }
+            ActionRow(
+                title: "Find extensions",
+                detail: extensions.installed.isEmpty
+                    ? "Opens the Chrome Web Store. On an extension's page, the puzzle piece in the address adds it."
+                    : "Opens the Chrome Web Store. Touch and hold an extension here to remove it."
+            ) {
+                store.isSettingsOpen = false
+                store.newTab(url: ChromeWebStore.home)
+            }
         }
     }
 }

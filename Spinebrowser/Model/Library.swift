@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import WebKit
 
 /// What every window shares: spaces, tabs, Pairs, the archive, settings and the live web views.
 /// Each window keeps its own place among them in a `BrowserStore`.
@@ -53,6 +54,8 @@ final class Library {
     /// its saved page at launch isn't in here, so a relaunch doesn't count as visiting every tab.
     @ObservationIgnored private var expectsVisit: Set<UUID> = []
     @ObservationIgnored private(set) lazy var engine = WebEngine(library: self)
+    /// Chrome extensions and the WebKit controller that runs them. Its own list is observed.
+    @ObservationIgnored private(set) lazy var extensions = ExtensionStore(library: self)
     let favicons = FaviconStore()
 
     init() {
@@ -110,6 +113,9 @@ final class Library {
 
     private var liveWindows: [BrowserStore] { windows.values.compactMap(\.store) }
 
+    /// Every window open now, for extensions that ask.
+    var openWindows: [BrowserStore] { liveWindows }
+
     func window(id: UUID) -> BrowserStore? { windows[id]?.store }
 
     /// The window showing this tab, if one does.
@@ -159,6 +165,7 @@ final class Library {
 
     func windowBecameActive(_ id: UUID) {
         lastActiveWindowID = id
+        extensions.windowFocused(id)
     }
 
     /// A window now shows these tabs. Any other window showing one of them lets it go.
@@ -197,6 +204,7 @@ final class Library {
         tabs.insert(tab, at: tabs.firstIndex { $0.tier == .today } ?? tabs.count)
         if url != nil { expectsVisit.insert(tab.id) }
         scheduleSave()
+        extensions.tabOpened(tab.id)
         return tab
     }
 
@@ -225,6 +233,7 @@ final class Library {
         runtime[tabID] = nil
         forgetReader(tabID)
         tabs.removeAll { $0.id == tabID }
+        extensions.tabClosed(tabID)
         reconcileWindows()
         scheduleSave()
     }
@@ -590,12 +599,17 @@ final class Library {
             }
         }
         recordVisit(tabID, from: previous, title: title, state: state)
+        var told: WKWebExtension.TabChangedProperties = []
+        if previous != state.currentURL { told.insert(.URL) }
+        if runtime[tabID]?.isLoading != state.isLoading { told.insert(.loading) }
         if runtime[tabID] != state { runtime[tabID] = state }
         var changed = false
         if let title, !title.isEmpty, tabs[i].title != title {
             tabs[i].title = title
             changed = true
+            told.insert(.title)
         }
+        extensions.tabChanged(tabID, told)
         // Pinned tabs and Essentials keep their home address; Today tabs follow the page.
         if tabs[i].tier == .today, let url = state.currentURL, tabs[i].url != url {
             tabs[i].url = url

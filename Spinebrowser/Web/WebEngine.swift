@@ -34,6 +34,8 @@ final class WebEngine: NSObject {
         super.init()
         // One shared cookie jar in MVP. Per-space data stores arrive with Profiles.
         configuration.websiteDataStore = .default()
+        // Every page shares the extension controller, so content scripts reach all of them.
+        configuration.webExtensionController = library.extensions.controller
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
         #endif
@@ -134,7 +136,8 @@ final class WebEngine: NSObject {
         if let existing = views[tabID] { return existing }
         guard let tab = library?.tab(id: tabID) else { return nil }
 
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        // An extension's own page runs in that extension's process, with its configuration.
+        let view = WKWebView(frame: .zero, configuration: library?.extensions.configuration(for: tab.url) ?? configuration)
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
@@ -407,7 +410,7 @@ extension WebEngine: WKNavigationDelegate {
             library?.peek(url, from: tabID, origin: WebContainerView.recentPress)
             return .cancel
         }
-        guard !Self.isPage(url) else { return .allow }
+        guard !Self.isPage(url), library?.extensions.controller.extensionContext(for: url) == nil else { return .allow }
         if navigationAction.targetFrame?.isMainFrame ?? true {
             Platform.openExternally(url)
         }
@@ -475,7 +478,7 @@ extension WebEngine {
         } else if isGlance(webView), Self.isPage(url) {
             // A Glance stays one page: a new window from it opens in the same card.
             webView.load(URLRequest(url: url))
-        } else if Self.isPage(url) {
+        } else if Self.isPage(url) || library?.extensions.controller.extensionContext(for: url) != nil {
             library?.pageOpened(url, from: tabID(for: webView))
         } else {
             Platform.openExternally(url)

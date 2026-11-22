@@ -19,11 +19,20 @@ final class BrowserStore {
             if glance != nil { dismissGlance() }
             guard isRegistered else { return }
             library.window(self, shows: shownTabIDs)
+            tellExtensions()
         }
     }
     /// Set once the library has settled what this window may show.
     @ObservationIgnored var isRegistered = false
-    private(set) var focusedPaneIndex = 0
+    private(set) var focusedPaneIndex = 0 {
+        didSet { if focusedPaneIndex != oldValue { tellExtensions() } }
+    }
+
+    /// Extensions follow the tab in front.
+    private func tellExtensions() {
+        guard isRegistered, !panes.isEmpty else { return }
+        library.extensions.window(id, focuses: focusedPane.tabID)
+    }
     private(set) var spineState: SpineState = .sidebar
     /// The Pair on screen. Set exactly when two windows show, and their tabs match it.
     private(set) var shownPairID: UUID?
