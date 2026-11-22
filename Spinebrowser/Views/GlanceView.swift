@@ -1,5 +1,10 @@
 import SwiftUI
 import WebKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// A Glance over one region of the page row: the other window of a Pair, the far side of a single
 /// page, or the whole page on the cover. A scrim dims the region; the card floats in it.
@@ -93,7 +98,7 @@ struct GlanceCard: View {
                 LoadingHairline(runtime: TabRuntime(isLoading: glance.isLoading, progress: glance.progress))
             }
             Rectangle().fill(p.line).frame(height: 1)
-            Text("Swipe down to dismiss · scroll to read")
+            Text(Platform.isMac ? "Scroll to read · press Esc to dismiss" : "Swipe down to dismiss · scroll to read")
                 .font(Typeface.footnote)
                 .foregroundStyle(p.textSecondary)
                 .frame(maxWidth: .infinity)
@@ -159,7 +164,7 @@ struct GlanceCard: View {
                     withAnimation(Motion.spring(reduce: reduceMotion)) { store.keepGlance(asPair: false) }
                 }
                 Button("Copy link", systemImage: "link") {
-                    UIPasteboard.general.url = store.engine.glanceURL(glance.id) ?? glance.url
+                    Clipboard.copy(store.engine.glanceURL(glance.id) ?? glance.url)
                 }
             }
 
@@ -199,10 +204,13 @@ struct GlanceCard: View {
 }
 
 /// Parents the Glance's live page, which the engine owns until it's kept or let go.
-private struct GlanceWebHost: UIViewRepresentable {
+private struct GlanceWebHost {
     let glance: Glance
     let engine: WebEngine
+}
 
+#if os(iOS)
+extension GlanceWebHost: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
         container.clipsToBounds = true
@@ -218,3 +226,22 @@ private struct GlanceWebHost: UIViewRepresentable {
         container.addSubview(view)
     }
 }
+#else
+extension GlanceWebHost: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
+        return container
+    }
+
+    func updateNSView(_ container: NSView, context: Context) {
+        let view = engine.glanceView(for: glance)
+        guard view.superview !== container else { return }
+        view.removeFromSuperview()
+        view.frame = container.bounds
+        view.autoresizingMask = [.width, .height]
+        container.addSubview(view)
+    }
+}
+#endif

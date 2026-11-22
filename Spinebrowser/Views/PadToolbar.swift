@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Where the controls live. The Duo has a system column, which iOS fills from standard bar items.
-/// An iPad has none, so the app draws one row of glass buttons on the desk, above the page.
-enum Platform {
-    static let drawsOwnToolbar = UIDevice.current.userInterfaceIdiom == .pad
-    /// How copy names the device: "phone" on the Duo, "iPad" on an iPad.
-    static let deviceName = drawsOwnToolbar ? "iPad" : "phone"
-}
-
 extension EnvironmentValues {
     /// True on a device with a fold. Everywhere else the middle of the page stands in for it.
     @Entry var hasFold = false
@@ -15,7 +7,7 @@ extension EnvironmentValues {
     @Entry var spineTopInset: CGFloat = 0
 }
 
-/// The iPad's bar: the Spine toggle and back/forward lead; Share, Pair and New tab trail.
+/// The iPad's bar: the Spine toggle and back/forward lead; Reader, Share, Pair and New tab trail.
 /// It acts on the focused window, like the Duo's system column.
 struct PadToolbar: View {
     /// Room on the leading side taken by the Spine or the window controls.
@@ -37,6 +29,8 @@ struct PadToolbar: View {
         let spring = Motion.spring(reduce: reduceMotion)
         let runtime = store.focusedRuntime
         let focusedID = store.focusedPane.tabID
+        let canRead = store.canRead(focusedID)
+        let isReading = store.readerSession(for: focusedID) != nil
         HStack(spacing: 10) {
             GlassCircle(label: "Spine", symbol: "sidebar.left") {
                 withAnimation(spring) {
@@ -58,6 +52,15 @@ struct PadToolbar: View {
 
             Spacer(minLength: 0)
 
+            // Reader is offered only where Readability finds an article, as in the pill.
+            if canRead {
+                GlassCircle(label: isReading ? "Hide Reader" : "Show Reader",
+                            symbol: isReading ? "doc.plaintext.fill" : "doc.plaintext",
+                            isOn: isReading) {
+                    withAnimation(spring) { store.toggleReader(focusedID) }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
             if let url = store.focusedTab.flatMap({ store.currentURL(for: $0) }) {
                 ShareLink(item: url) {
                     Image(systemName: "square.and.arrow.up")
@@ -99,12 +102,15 @@ struct PadToolbar: View {
         .padding(.leading, leading)
         .padding(.trailing, 10)
         .frame(height: Self.height)
+        .animation(spring, value: canRead)
     }
 }
 
 private struct GlassCircle: View {
     let label: String
     let symbol: String
+    /// A mode that's on (Reader while reading) takes the accent, as the pill does.
+    var isOn = false
     let action: () -> Void
 
     @Environment(\.palette) private var p
@@ -113,7 +119,7 @@ private struct GlassCircle: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(p.text)
+                .foregroundStyle(isOn ? p.accent : p.text)
                 .frame(width: PadToolbar.height, height: PadToolbar.height)
         }
         .buttonStyle(.plain)

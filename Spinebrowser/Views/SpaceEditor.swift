@@ -69,7 +69,7 @@ struct SpaceEditor: View {
                         .font(.body)
                         .foregroundStyle(p.text)
                         .focused($isNaming)
-                        .submitLabel(.done)
+                        .doneSubmitLabel()
                         .onSubmit(commitName)
                         .padding(.vertical, 12)
                         .padding(.horizontal, 16)

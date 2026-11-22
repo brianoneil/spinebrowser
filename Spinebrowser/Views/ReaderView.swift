@@ -1,5 +1,10 @@
 import SwiftUI
 import WebKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// A turn of the page asked for from outside the page: a margin tap, a button on the console.
 struct ReaderTurn: Equatable {
@@ -15,7 +20,7 @@ struct ReaderSeek: Equatable {
 
 /// Hosts a tab's reader page. The page itself lives in the engine, so hiding Reader and showing it
 /// again is instant and keeps your place, and moving between postures never rebuilds it.
-struct ReaderWebView: UIViewRepresentable {
+struct ReaderWebView {
     let tabID: UUID
     let engine: WebEngine
     let article: Article
@@ -33,7 +38,10 @@ struct ReaderWebView: UIViewRepresentable {
     var onPeek: (URL) -> Void = { _ in }
     /// Reading down hides the pill; pulling back up shows it.
     var onReadingDown: (Bool) -> Void = { _ in }
+}
 
+#if os(iOS)
+extension ReaderWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> ReaderHostView {
         ReaderHostView()
     }
@@ -42,10 +50,22 @@ struct ReaderWebView: UIViewRepresentable {
         host.show(engine.readerPage(for: tabID), with: self)
     }
 }
+#else
+extension ReaderWebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> ReaderHostView {
+        ReaderHostView()
+    }
+
+    func updateNSView(_ host: ReaderHostView, context: Context) {
+        host.show(engine.readerPage(for: tabID), with: self)
+    }
+}
+#endif
 
 /// Holds a reader page while it's on screen. During a change of posture two hosts can be alive at
 /// once, the old one fading out. The newest host on screen owns the page; one on its way out never
 /// takes it back, and only the owner gives the page its layout.
+#if os(iOS)
 final class ReaderHostView: UIView {
     private var page: ReaderPageController?
     private var config: ReaderWebView?
@@ -93,6 +113,53 @@ final class ReaderHostView: UIView {
         if moved { page.attached() }
     }
 }
+#else
+final class ReaderHostView: NSView {
+    private var page: ReaderPageController?
+    private var config: ReaderWebView?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @MainActor
+    func show(_ page: ReaderPageController, with config: ReaderWebView) {
+        self.page = page
+        self.config = config
+        if page.view.superview !== self, page.view.superview?.window == nil, window != nil {
+            claim()
+        } else if page.view.superview === self {
+            page.update(config)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        MainActor.assumeIsolated { claim() }
+    }
+
+    @MainActor
+    private func claim() {
+        guard let page, let config else { return }
+        let view = page.view
+        let moved = view.superview !== self
+        if moved {
+            view.removeFromSuperview()
+            view.frame = bounds
+            view.autoresizingMask = [.width, .height]
+            addSubview(view)
+        }
+        page.update(config)
+        if moved { page.attached() }
+    }
+}
+#endif
 
 /// One tab's article set in type: a web view that loads nothing but the article, with the page's
 /// scripts off. Every reader page shares one cookie-free data store, so the article's images load
@@ -106,7 +173,9 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
     private static let configuration: WKWebViewConfiguration = {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        #if os(iOS)
         configuration.dataDetectorTypes = []
+        #endif
         let controller = configuration.userContentController
         controller.addUserScript(WKUserScript(
             source: ReaderDocument.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: world
@@ -130,12 +199,14 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
         super.init()
         view.navigationDelegate = self
         view.uiDelegate = self
+        #if os(iOS)
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.isFindInteractionEnabled = true
         view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(panned(_:)))
+        #endif
         ReaderMessageRouter.shared.register(self, for: view)
     }
 
@@ -155,8 +226,10 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
         let style = ReaderDocument.variables(tone: next.tone, preferences: next.preferences)
         // A new article, or a switch between scrolling and pages, needs a fresh document.
         let key = "\(next.article.url.absoluteString)|\(next.article.html.count)|\(next.flow.isPaged)|\(perSpread(next.flow))|\(Int(next.topInset))"
+        #if os(iOS)
         view.scrollView.isScrollEnabled = !next.flow.isPaged
         view.scrollView.bounces = !next.flow.isPaged
+        #endif
         if key != loadedKey {
             // The same article in a new shape opens where you were.
             let sameArticle = loadedKey?.hasPrefix("\(next.article.url.absoluteString)|\(next.article.html.count)|") ?? false
@@ -223,6 +296,7 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
         parent?.onState(value, page, pages)
     }
 
+    #if os(iOS)
     @objc private func panned(_ pan: UIPanGestureRecognizer) {
         guard let scroll = pan.view as? UIScrollView, parent?.flow.isPaged == false else { return }
         let y = pan.translation(in: scroll).y
@@ -243,6 +317,7 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
             break
         }
     }
+    #endif
 
     // The reader page loads only its own document. Links leave Reader for the real page.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
@@ -254,12 +329,14 @@ final class ReaderPageController: NSObject, WKNavigationDelegate, WKUIDelegate {
         return .cancel
     }
 
+    #if os(iOS)
     func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
         guard let url = elementInfo.linkURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         parent?.onPeek(url)
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: []) }
     }
+    #endif
 
     /// If WebKit ever drops the page's process, the next update loads the article again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -399,7 +476,7 @@ struct ReaderChip: View {
             .accessibilityLabel("Reader type and theme")
             .popover(isPresented: $isPanelOpen, arrowEdge: .top) {
                 ReaderTypePanel(tabID: tab.id)
-                    .presentationCompactAdaptation(.popover)
+                    .compactPopover()
             }
 
             Text(session?.isReady == true ? "Reader · \(session?.timeLeft ?? "")" : "Reader")

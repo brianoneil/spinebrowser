@@ -59,7 +59,7 @@ struct PairRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .hoverEffect(.highlight)
+            .pointerLift()
             .accessibilityLabel("\(tab.displayTitle), \(side == 0 ? "left" : "right")")
             .accessibilityAddTraits(isShown ? .isSelected : [])
         }
@@ -109,7 +109,7 @@ struct PairStripItem: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .hoverEffect(.highlight)
+            .pointerLift()
             .overlay(alignment: .leading) {
                 if isShown { ActiveMark(binding: binding, isFocused: isFocused).padding(.leading, 3) }
             }

@@ -1,6 +1,6 @@
 # Spinebrowser
 
-Arc/Zen-style browser for the iPhone Duo. Native SwiftUI + WKWebView.
+Arc/Zen-style browser for the iPhone Duo, iPad and Mac. Native SwiftUI + WKWebView.
 
 ## Writing
 

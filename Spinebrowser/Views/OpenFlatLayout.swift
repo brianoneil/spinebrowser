@@ -31,7 +31,8 @@ struct OpenFlatLayout: View {
             let ownBar = Platform.drawsOwnToolbar
             let corner = geo.containerCornerInsets.topLeading
             // Under the window controls the Space header sits a row below them, not a full corner below.
-            let spineTop: CGFloat = ownBar ? max(insets.top + PadToolbar.top, corner.height - 16) : 0
+            let spineTop: CGFloat = Platform.isMac ? 28
+                : (ownBar ? max(insets.top + PadToolbar.top, corner.height - 16) : 0)
             // Bent with an article open, Reader takes the whole display: a book when the crease runs
             // down the middle, a page above a console when it runs across.
             let crease = Self.activeCrease(in: geo)
@@ -68,8 +69,11 @@ struct OpenFlatLayout: View {
                 .padding(.top, ownBar ? 0 : insets.top)
 
                 if ownBar {
-                    PadToolbar(leading: max(spineWidth + 10, corner.width + 8), showsPair: isOpenDisplay)
-                        .padding(.top, insets.top + PadToolbar.top)
+                    PadToolbar(
+                        leading: max(spineWidth + 10, corner.width + 8),
+                        showsPair: isOpenDisplay
+                    )
+                    .padding(.top, insets.top + PadToolbar.top)
                 }
 
                 edgeHandle(state: state, resting: resting, spineWidth: spineWidth, canResize: isOpenDisplay && !store.isPair)

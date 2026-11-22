@@ -63,19 +63,21 @@ struct CommandBar: View {
             }
         }
         .task { await checkClipboard() }
-        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Platform.pasteboardChanged)) { _ in
             Task { await checkClipboard() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Platform.appDidBecomeActive)) { _ in
             Task { await checkClipboard() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
-            let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
-            withAnimation(.easeOut(duration: 0.25)) { keyboardTop = frame?.minY ?? .infinity }
+        .onReceive(NotificationCenter.default.publisher(for: Platform.keyboardWillChangeFrame)) { note in
+            withAnimation(.easeOut(duration: 0.25)) { keyboardTop = Platform.keyboardTop(from: note) ?? .infinity }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Platform.keyboardWillHide)) { _ in
             withAnimation(.easeOut(duration: 0.25)) { keyboardTop = .infinity }
         }
+        #if os(macOS)
+        .onExitCommand { dismiss() }
+        #endif
     }
 
     private func results(_ sections: [CommandSection], top: CommandResult?, binding: SpaceBinding) -> some View {
@@ -107,7 +109,8 @@ struct CommandBar: View {
                 .foregroundStyle(space.binding.ink(p))
             CompletingTextField(
                 placeholder: "Search or command", text: $query, isDeleting: $isDeleting, suffix: suffix,
-                textColor: p.text, tint: p.accent, highlight: space.binding.tint(p)
+                textColor: p.text, tint: p.accent, highlight: space.binding.tint(p),
+                onCancel: dismiss
             ) {
                 let typed = !query.trimmingCharacters(in: .whitespaces).isEmpty
                 let sections = CommandModel.sections(
@@ -140,15 +143,7 @@ struct CommandBar: View {
     }
 
     private func checkClipboard() async {
-        let board = UIPasteboard.general
-        if board.hasURLs {
-            clipboardHasLink = true
-        } else if board.hasStrings {
-            let found = try? await board.detectedPatterns(for: [\.probableWebURL])
-            clipboardHasLink = found?.contains(\.probableWebURL) ?? false
-        } else {
-            clipboardHasLink = false
-        }
+        clipboardHasLink = await Clipboard.hasLink()
     }
 
     private func dismiss() {
@@ -704,8 +699,7 @@ enum CommandModel {
         case .visit(let visit): store.open(visit.url)
         case .pasteAndGo:
             // Reading the clipboard is what raises iOS's paste alert, so it waits for the tap.
-            let board = UIPasteboard.general
-            if let url = [board.url?.absoluteString, board.string].compactMap({ $0.flatMap(NavigationInput.firstLink(in:)) }).first {
+            if let url = Clipboard.firstLink() {
                 store.open(url)
             }
         case .archived(let item): store.restore(item.id)

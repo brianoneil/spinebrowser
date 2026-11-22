@@ -1,11 +1,11 @@
+import Foundation
 import Observation
-import UIKit
 
 /// Site icons, fetched from the site itself (never a third-party icon service) and cached on disk.
 @MainActor
 @Observable
 final class FaviconStore {
-    private var images: [String: UIImage] = [:]
+    private var images: [String: PlatformImage] = [:]
     @ObservationIgnored private var missing: Set<String> = []
     @ObservationIgnored private var inFlight: Set<String> = []
     /// Hosts whose icon came from their own page this launch. That icon is the authority: an alias
@@ -22,7 +22,7 @@ final class FaviconStore {
             .appendingPathComponent("favicons", isDirectory: true)
     }
 
-    func image(for host: String?) -> UIImage? {
+    func image(for host: String?) -> PlatformImage? {
         guard let host else { return nil }
         let key = Self.key(host)
         if let image = images[key] { return image }
@@ -32,7 +32,7 @@ final class FaviconStore {
         Task { [weak self] in
             guard let file = Self.directory?.appendingPathComponent(key + ".png"),
                   let data = try? Data(contentsOf: file),
-                  let image = UIImage(data: data) else { return }
+                  let image = PlatformImage(data: data) else { return }
             // A fetch may have landed a newer icon while the disk was read.
             guard let self, self.images[key] == nil else { return }
             self.images[key] = image
@@ -61,7 +61,7 @@ final class FaviconStore {
             for url in candidates {
                 guard let (data, response) = try? await URLSession.shared.data(from: url),
                       (response as? HTTPURLResponse)?.statusCode == 200,
-                      let image = UIImage(data: data), image.size.width >= 16 else { continue }
+                      let image = PlatformImage(data: data), image.size.width >= 16 else { continue }
                 guard let self else { return }
                 self.fresh.insert(key)
                 self.store(image, as: key)
@@ -73,7 +73,7 @@ final class FaviconStore {
         }
     }
 
-    private func store(_ image: UIImage, as key: String) {
+    private func store(_ image: PlatformImage, as key: String) {
         images[key] = image
         guard let directory = Self.directory, let png = image.pngData() else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

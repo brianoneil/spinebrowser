@@ -171,7 +171,7 @@ struct URLPill: View {
             HStack(spacing: 6) {
                 // A secure page shows its own icon when it has one; otherwise the lock holds the place.
                 if !insecure, let icon = store.favicons.image(for: url?.host()) {
-                    Image(uiImage: icon)
+                    Image(platformImage: icon)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fill)
@@ -248,7 +248,7 @@ struct URLPill: View {
         .contextMenu {
             Button("Reload", systemImage: "arrow.clockwise") { store.engine.reload(tab.id) }
             if let url {
-                Button("Copy link", systemImage: "link") { UIPasteboard.general.url = url }
+                Button("Copy link", systemImage: "link") { Clipboard.copy(url) }
             }
         }
         .accessibilityElement(children: .contain)

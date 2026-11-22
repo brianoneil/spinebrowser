@@ -1,8 +1,8 @@
 # Spinebrowser — MVP Specification
 
-**An Arc/Zen-style browser for the iPhone Duo (dual-screen iPhone).**
+**An Arc/Zen-style browser for the iPhone Duo, iPad and Mac.**
 
-Version 0.1 — 2026-11-15
+Version 0.2 — 2026-11-21
 Status: Draft for review
 
 ---
@@ -153,7 +153,7 @@ Zen's Glance, touch-native. Peek at a link without opening a tab.
 
 Reader sets the article in New York on its own paper, and it takes the shape of the posture.
 
-- **Offered only where there's an article.** Mozilla's Readability (bundled, Apache-2.0) checks each page as it finishes loading, in its own script world. Where it finds one, the URL pill grows a Reader button. Reader is also in the command bar ("Show Reader"), the Pair window menu, and View ▸ Show Reader (⇧⌘R). Back closes Reader before it walks history.
+- **Offered only where there's an article.** Mozilla's Readability (bundled, Apache-2.0) checks each page as it finishes loading, in its own script world. Where it finds one, the URL pill grows a Reader button, and the iPad bar keeps one beside Share. Reader is also in the command bar ("Show Reader"), the Pair window menu, and View ▸ Show Reader (⇧⌘R). Back closes Reader before it walks history.
 - **The page stays loaded underneath.** Leaving Reader puts you back exactly where you were. Following a link from Reader leaves Reader and loads it in the tab; long-press peeks in a Glance. Going to another page closes Reader. Reader is runtime state: a relaunch shows the page.
 - **Flat, or in a window of the Pair:** one scrolling column, 60–66 characters wide, with the chip "Aa · Reader · 6 min left" at the top left. The chip recedes with the pill.
 - **Book (bent, crease down the middle):** the crease becomes the gutter. The article runs across two pages a spread; text keeps 35.5pt off the crease on the left page and 26pt on the right, as Settings does. Folios sit under each page. Tap the outer third of either page, tap a margin, or swipe to turn. Images stay inside a page, so none crosses the gutter. The Spine becomes a thumb index cut into the left page's edge, each tab in its space's cloth and the open one in paper. A Glance or the command bar takes the right-hand page.
@@ -200,8 +200,8 @@ The habits you set once. Settings take the inner display: the Spine and the page
 | Privacy | **Block trackers and ads** | On | Adds or removes the bundled rule list on every web view and reloads the pages on screen. The footnote quotes how many domains the list blocks, counted from the bundled file. |
 | Privacy | **Clear browsing data…** | — | Madder, behind a confirmation. Clears what §4.8 lists, then says so in place: "Cleared. Sites will ask you to sign in again." |
 | Pro | **Get Spine Pro…** · **Restore purchases** | — | Shown to free customers. Get Spine Pro opens the RevenueCat paywall, and its footnote quotes the store's own prices. Restore brings back a purchase made with the same Apple Account and says so in place when it finds none. |
-| Pro | **Spine Pro** · **Manage purchase…** | — | Shown to paid customers. Spine Pro reads Active with the renewal or end date, or "Yours for life." Manage purchase opens RevenueCat's Customer Center. |
-| About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone (on iPad, this iPad), with no accounts and no telemetry. |
+| Pro | **Spine Pro** · **Manage purchase…** | — | Shown to paid customers. Spine Pro reads Active with the renewal or end date, or "Yours for life." Manage purchase opens RevenueCat's Customer Center (on Mac, the App Store's subscription page). |
+| About | **Version** · **Your data** | — | Marketing version and build. Your data is on this phone (on iPad, this iPad; on Mac, this Mac), with no accounts and no telemetry. |
 
 - Settings persist with the rest of local state. Every setting decodes with a default, so a setting added later never wipes saved tabs.
 - Toggles switch on the switch itself, as in iOS Settings. Each segment and swatch is its own accessibility element with a selected trait.
@@ -211,7 +211,7 @@ The habits you set once. Settings take the inner display: the Spine and the page
 
 The same browser, minus the fold. Everything above holds on iPad; this is what changes.
 
-- **The app draws its own bar.** iPadOS has no system column, so the controls come inside: one row of glass buttons on the desk, above the page. The Spine toggle and back/forward lead; Share, Pair and New tab trail. The bar acts on the focused window, like the system column. The Duo keeps its system column.
+- **The app draws its own bar.** iPadOS has no system column, so the controls come inside: one row of glass buttons on the desk, above the page. The Spine toggle and back/forward lead; Reader, Share, Pair and New tab trail. Reader appears only when the focused page has an article. The bar acts on the focused window, like the system column. The Duo keeps its system column.
 - **The cloth runs to the top.** The Spine sits under the 24pt status bar and, in a window, under the window controls. Its content starts below both. The page sits below the bar.
 - **No fold, no crease.** The divider of a Pair rests wherever you leave it, with 240pt for each window. The bead marks the even split instead of the fold: a magnetic detent, filled when the divider sits on it. Double-tap the grip to split evenly. Nothing ever locks.
 - **Width decides the layout, not the device.** Under 600pt the window takes the cover's layout: the Spine slides in over the page and a Pair shows its focused side. Under 1000pt the window starts in Spines, so an 11-inch in portrait has room to read. Widen it and the Sidebar comes back. A Pair stays available in portrait.
@@ -222,7 +222,7 @@ The same browser, minus the fold. Everything above holds on iPad; this is what c
 | Menu | Command | Shortcut |
 |---|---|---|
 | File | New Tab · New Window | ⌘T · ⌘N |
-| View | Change the Spine · Reload · Zoom In · Zoom Out · Actual Size | ⌃⌘S · ⌘R · ⌘+ · ⌘− · ⌘0 |
+| View | Change the Spine · Reload · Zoom In · Zoom Out · Actual Size · Show Reader | ⌃⌘S · ⌘R · ⌘+ · ⌘− · ⌘0 · ⇧⌘R |
 | History | Back · Forward · Show the Archive | ⌘[ · ⌘] · ⌘Y |
 | Tabs | Search or Command · Reopen Closed Tab · Close Tab | ⌘L · ⇧⌘T · ⌘W |
 | Tabs | Next Tab · Previous Tab · Tab 1 to 8 · Last Tab | ⌃Tab · ⌃⇧Tab · ⌘1–⌘8 · ⌘9 |
@@ -234,6 +234,32 @@ The same browser, minus the fold. Everything above holds on iPad; this is what c
 - **Copy.** Words that name the fold have a no-fold version: the divider reads "Even split", the colophon says "Made for the page", and Settings says "this iPad".
 - Design: Paper page **iPad — no fold** (01 landscape with the Sidebar · 02 the Pair without a crease · 03 portrait with Spines · 04 two windows in Stage Manager · 05 keyboard, menu bar and pointer).
 
+### 4.13 Mac
+
+The same browser, with a pointer and a menu bar. Everything above holds on the Mac; this is what changes.
+
+- **A native Mac app.** A second macOS target shares the same model and SwiftUI views as the iPhone and iPad. The window keeps the desk-and-paper layout: cloth on the left, paper on the right. The traffic lights sit over the cloth, and the page sits below the app's bar.
+- **No fold, no crease, no postures.** The Mac reports no `.division` region, so the crease paths never run. The Pair's divider rests wherever you leave it, with 240pt for each window, and the bead marks the even split. Book and Tabletop Reader are unreachable; Reader stays in its flat column.
+- **Width decides the layout, as on iPad.** Under 600pt the window takes the cover's layout: the Spine slides in over the page and a Pair shows its focused side. Under 1000pt the window starts in Spines; widen it and the Sidebar comes back. A Pair stays available while there is room for two windows.
+- **Every window is its own browser.** Each window keeps its own Space, focus, Spine and Pair. Spaces, tabs, Pairs, the archive and settings are shared, and a page lives in one window at a time. A new window starts on a fresh tab in the Space you were using.
+- **Pointer and keyboard.** Tabs, Pairs and Essentials lift under the pointer. Right-click a link for the link menu: **Glance**, **Open in New Tab**, **Open in the Other Window**, **Copy Link**. Right-click a tab for its menu. ⌘-click opens a link in a new tab; ⌥-click opens it in the other window. Two-finger swipe goes back and forward.
+- **The menu bar carries every command.** The iPad table holds, with these added:
+
+| Menu | Command | Shortcut |
+|---|---|---|
+| Spine | Settings… | ⌘, |
+| Edit | Find · Find Next · Find Previous | ⌘F · ⌘G · ⇧⌘G |
+| File | Print… | ⌘P |
+
+  Find uses a find bar over the focused page. Print prints the focused page. Close Window, Enter Full Screen, Services, Hide and Quit are the system's own.
+- **Default browser.** Spine declares `http` and `https`, so macOS can make it the default. Settings has a **Make Spine the default browser** row; the system asks for consent. Links opened in other apps land as a tab in the window you were using, and opening Spine with no window opens one. The iOS web-browser entitlement plays no part.
+- **Downloads, uploads and print.** Downloads go to Downloads and never take the page with them. Uploads use the standard open panel. Print prints the page.
+- **Settings is a window.** ⌘, opens it. It holds the same sections in one column, with the same habits. "Your data" says "on this Mac". Pro is the same entitlement: **Get Spine Pro** opens the RevenueCat paywall, **Restore purchases** brings back a purchase made with the same Apple Account, and **Manage purchase** opens the App Store's subscription page, since RevenueCat's Customer Center has no macOS version.
+- **Media.** Pages may ask for the camera and microphone; the system's own prompt is the only one.
+- **Distribution.** Mac App Store, universal purchase with the iPhone and iPad app, one Pro entitlement. The app is sandboxed.
+- **Copy.** "This Mac"; the divider reads "Even split"; the colophon says "Made for the page".
+- Design: Paper page **Mac — no fold** (01 window with the Sidebar · 02 Spines · 03 the Pair · 04 command bar and Glance · 05 Settings · 06 pointer and right-click · 07 app icon).
+
 ### Explicitly out of MVP
 
 - AI features (Browse for Me, summaries, smart archive)
@@ -242,7 +268,6 @@ The same browser, minus the fold. Everything above holds on iPad; this is what c
 - Profiles / container isolation
 - Sync across devices
 - Extensions
-- macOS version (iPad comes first, §4.12)
 
 ---
 
@@ -321,11 +346,12 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 - **Modes v2 — Postures & the Spine:** 01 Open flat · Sidebar · 02 Spines at night · 03 The Pair, drag between windows · 04 Pair + Spine overlay · 05 Glance & command bar · 06 Closing → cover storyboard · 07 Cover Shelf · 08 Book with thumb index · 09 Laptop console · 10 Open upright · 11 Pairs kept, one row in the Spine · 12 Drag a tab onto a window · 13 Drag a link across the Pair · 14 Command bar, history & completion.
 - **Settings:** 00 cover · 01 Settings, day, open flat · 02 Settings, night, open flat · 03 Open from the command bar.
 - **iPad — no fold:** 01 Landscape · Sidebar · 02 The Pair, no crease · 03 Portrait · Spines · 04 Stage Manager, two windows · 05 Keyboard, menu bar, pointer.
+- **Mac — no fold:** 01 Window with the Sidebar · 02 Spines · 03 The Pair · 04 Command bar and Glance · 05 Settings · 06 Pointer and right-click · 07 App icon.
 - **Modes v1:** superseded. It used a two-screen model and a standard iPhone status bar.
 
 ## 7. Technical architecture
 
-- **Platform:** Swift + SwiftUI (chrome/UI) with UIKit interop where needed; **WKWebView** per pane.
+- **Platform:** Swift + SwiftUI (chrome/UI) with UIKit on iOS and AppKit on the Mac; **WKWebView** per pane. One model and one set of views back both targets, with a platform layer for the web view hosts, clipboard, images and text input. iOS/iPadOS is one target; macOS is a second target sharing the same sources. The Mac ships on the Mac App Store with universal purchase and the same Pro entitlement.
 - **Process isolation:** separate `WKProcessPool` per pane; shared `WKWebsiteDataStore` in MVP (per-space data stores land with Profiles later — design the seam now).
 - **Tab model:** single source of truth; panes and scenes render onto it. No tab state in view controllers. A shared `Library` holds spaces, tabs, Pairs, the archive, settings and the web views; each window's `BrowserStore` holds its panes, Spine and Pair, and saves under the window's scene id. A web view shows in one window at a time.
 - **State restoration:** persist per-pane navigation state, scroll offsets, reader state; restore across launch and geometry change.
@@ -367,7 +393,7 @@ Paper file **Spinebrowser** (https://app.paper.design/file/01M7FY98GFMEZV8Y6CCC1
 4. **AI assist** (on-device page summaries; opt-in "Browse for Me"-style answers).
 5. **Capture/Easel-lite** (live region capture that links back to source).
 6. **Link routing rules** (Arc Air Traffic Control: domain → space).
-7. **macOS companion** via SwiftUI shared code, after the iPad (§4.12).
+7. **macOS** — the native Mac target (§4.13), shipped with the iPad release through universal purchase.
 
 ---
 

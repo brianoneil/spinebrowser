@@ -334,7 +334,7 @@ struct ReaderTabletop: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Reader type and theme")
                 .popover(isPresented: $isPanelOpen) {
-                    ReaderTypePanel(tabID: tab.id).presentationCompactAdaptation(.popover)
+                    ReaderTypePanel(tabID: tab.id).compactPopover()
                 }
 
                 Spacer()

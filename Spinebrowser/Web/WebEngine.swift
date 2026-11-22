@@ -1,4 +1,8 @@
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 import WebKit
 
 /// Owns one WKWebView per loaded tab. Switching tabs re-parents a live view, so nothing
@@ -30,13 +34,23 @@ final class WebEngine: NSObject {
         super.init()
         // One shared cookie jar in MVP. Per-space data stores arrive with Profiles.
         configuration.websiteDataStore = .default()
+        #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
+        #endif
         blocker = ContentBlocker(controller: configuration.userContentController, enabled: library.settings.blocksTrackers)
         // Pages report when a drag of theirs starts and ends, so the other window can offer a drop zone.
         configuration.userContentController.addUserScript(
             WKUserScript(source: Self.dragScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
         configuration.userContentController.add(DragMessageProxy(engine: self), name: Self.dragMessage)
+        #if os(macOS)
+        // The Mac's long-press is the right mouse button. Links hand themselves to the app
+        // before WebKit's own menu can open, so they can become a Glance.
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: Self.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        )
+        configuration.userContentController.add(ContextMenuProxy(engine: self), name: Self.contextMessage)
+        #endif
     }
 
     private static let dragMessage = "spineDrag"
@@ -50,6 +64,32 @@ final class WebEngine: NSObject {
     })();
     """
 
+    #if os(macOS)
+    private static let contextMessage = "spineContextMenu"
+    private static let contextScript = """
+    (function () {
+      document.addEventListener('contextmenu', function (event) {
+        var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+        if (!anchor) return;
+        var href = anchor.href;
+        if (!/^https?:/i.test(href)) return;
+        event.preventDefault();
+        try { window.webkit.messageHandlers.\(contextMessage).postMessage(href); } catch (e) {}
+      }, true);
+    })();
+    """
+
+    fileprivate func linkRightClicked(_ href: String, in webView: WKWebView?) {
+        guard let webView, let url = URL(string: href),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+        if isGlance(webView) {
+            webView.load(URLRequest(url: url))
+        } else {
+            library?.peek(url, from: tabID(for: webView), origin: WebContainerView.recentPress)
+        }
+    }
+    #endif
+
     fileprivate func pageDrag(_ kind: String, in webView: WKWebView?) {
         guard let webView, let tabID = tabID(for: webView) else { return }
         // Off the current turn, in case WebKit calls in mid-update.
@@ -58,12 +98,14 @@ final class WebEngine: NSObject {
         }
     }
 
+    #if os(iOS)
     /// Drag is off by default on iPhone, and WKWebView follows that default. With two windows
     /// side by side, images, links and text need to travel between them.
     private func enableDragging(in view: UIView) {
         for case let drag as UIDragInteraction in view.interactions { drag.isEnabled = true }
         view.subviews.forEach(enableDragging)
     }
+    #endif
 
     /// Turns the bundled rule list on or off for every web view, then reloads the given tabs.
     func setContentBlocking(_ enabled: Bool, reloading tabIDs: [UUID]) {
@@ -97,15 +139,19 @@ final class WebEngine: NSObject {
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
         view.allowsLinkPreview = true
+        #if os(iOS)
         // Edit ▸ Find (⌘F) and ⌘G reach the page through the system's find bar.
         view.isFindInteractionEnabled = true
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanned(_:)))
+        #endif
         views[tabID] = view
         observe(view, tabID: tabID)
+        #if os(iOS)
         enableDragging(in: view)
+        #endif
 
         if let state = parked.removeValue(forKey: tabID) {
             view.interactionState = state
@@ -200,11 +246,15 @@ final class WebEngine: NSObject {
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true
+        #if os(iOS)
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.contentInsetAdjustmentBehavior = .never
+        #endif
         glanceViews[glance.id] = view
+        #if os(iOS)
         enableDragging(in: view)
+        #endif
         let id = glance.id
         let sync: @Sendable (WKWebView) -> Void = { [weak self] _ in
             Task { @MainActor in
@@ -240,8 +290,10 @@ final class WebEngine: NSObject {
         parked[tabID] = nil
         views[tabID] = view
         view.allowsLinkPreview = true
+        #if os(iOS)
         view.isFindInteractionEnabled = true
         view.scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollPanned(_:)))
+        #endif
         observe(view, tabID: tabID)
         sync(view, tabID: tabID)
         return true
@@ -270,6 +322,7 @@ final class WebEngine: NSObject {
         return tabID
     }
 
+    #if os(iOS)
     /// Reading down the page hides the URL pill; pulling back up, or reaching the top, shows it.
     /// Only real drags count, so a page that moves on its own never hides the pill.
     @objc private func scrollPanned(_ pan: UIPanGestureRecognizer) {
@@ -295,6 +348,7 @@ final class WebEngine: NSObject {
             break
         }
     }
+    #endif
 
     private func tabID(for webView: WKWebView) -> UUID? {
         views.first { $0.value === webView }?.key
@@ -355,11 +409,13 @@ extension WebEngine: WKNavigationDelegate {
         }
         guard !Self.isPage(url) else { return .allow }
         if navigationAction.targetFrame?.isMainFrame ?? true {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            Platform.openExternally(url)
         }
         return .cancel
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let tabID = tabID(for: webView) { sync(webView, tabID: tabID) }
+        #if os(iOS)
         // Transparent until the first page commits, so a loading tab shows the card instead of
         // a white flash. After that WebKit must paint the page canvas itself: a site that sets
         // no background of its own expects white behind its text, not the app's dark surface.
@@ -367,9 +423,11 @@ extension WebEngine: WKNavigationDelegate {
             webView.isOpaque = true
             webView.backgroundColor = nil
         }
+        #endif
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let tabID = tabID(for: webView) { sync(webView, tabID: tabID) }
         guard let pageURL = webView.url, let host = pageURL.host() else { return }
         let tabID = tabID(for: webView)
         guard tabID != nil || isGlance(webView) else { return }
@@ -420,13 +478,14 @@ extension WebEngine {
         } else if Self.isPage(url) {
             library?.pageOpened(url, from: tabID(for: webView))
         } else {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            Platform.openExternally(url)
         }
         return nil
     }
 }
 
 extension WebEngine: WKUIDelegate {
+    #if os(iOS)
     /// Long-press a link to peek at it in a Glance over the other window. The system menu stays away.
     func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
         guard let url = elementInfo.linkURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
@@ -440,6 +499,23 @@ extension WebEngine: WKUIDelegate {
         // Nil would bring back WebKit's own menu. An empty one shows nothing.
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: []) }
     }
+    #else
+    /// A page's file field opens the standard panel.
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.begin { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+    }
+    #endif
 }
 
 /// The content controller keeps its handlers alive, so it holds this instead of the engine.
@@ -453,6 +529,20 @@ private final class DragMessageProxy: NSObject, WKScriptMessageHandler {
         MainActor.assumeIsolated { engine?.pageDrag(kind, in: message.webView) }
     }
 }
+
+#if os(macOS)
+/// A right-clicked link, on its way to a Glance.
+private final class ContextMenuProxy: NSObject, WKScriptMessageHandler {
+    weak var engine: WebEngine?
+
+    init(engine: WebEngine) { self.engine = engine }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let href = message.body as? String else { return }
+        MainActor.assumeIsolated { engine?.linkRightClicked(href, in: message.webView) }
+    }
+}
+#endif
 
 /// Built-in tracker and ad blocking from a bundled WebKit content-rule list, on by default.
 @MainActor
@@ -499,3 +589,80 @@ final class ContentBlocker {
         }
     }
 }
+
+#if os(macOS)
+extension WebEngine {
+    /// Find on the focused page. The bar lives in the SwiftUI shell.
+    func find(_ text: String, forward: Bool, in tabID: UUID) {
+        guard let view = views[tabID], !text.isEmpty else { return }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = !forward
+        configuration.wraps = true
+        Task { _ = try? await view.find(text, configuration: configuration) }
+    }
+
+    #if DEBUG
+    /// Test-only: dispatch a contextmenu from the page's first link, exercising the Mac's
+    /// right-click-to-Glance path without a mouse.
+    func debugContextMenu(_ tabID: UUID) {
+        views[tabID]?.evaluateJavaScript("""
+        (function () {
+          var a = document.querySelector('a[href^="http"]');
+          if (a) a.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, view: window }));
+        })();
+        """)
+    }
+    #endif
+
+    /// File ▸ Print prints the focused page.
+    func printPage(_ tabID: UUID) {
+        guard let view = views[tabID] else { return }
+        let operation = view.printOperation(with: NSPrintInfo.shared)
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        operation.run()
+    }
+}
+
+extension WebEngine: WKDownloadDelegate {
+    /// Downloads land in Downloads, with a numbered name when one is already there.
+    func download(
+        _ download: WKDownload,
+        decideDestinationUsing response: URLResponse,
+        suggestedFilename: String
+    ) async -> URL? {
+        let folder = ProcessInfo.processInfo.environment["SPINE_DOWNLOAD_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let base = (suggestedFilename as NSString).deletingPathExtension
+        let ext = (suggestedFilename as NSString).pathExtension
+        var candidate = folder.appendingPathComponent(suggestedFilename)
+        var index = 1
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            let name = ext.isEmpty ? "\(base) \(index)" : "\(base) \(index).\(ext)"
+            candidate = folder.appendingPathComponent(name)
+            index += 1
+        }
+        return candidate
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {}
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {}
+}
+
+extension WebEngine {
+    /// A file the page can't show is a download, not an error page.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        navigationResponse.canShowMIMEType ? .allow : .download
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+}
+#endif

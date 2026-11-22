@@ -94,7 +94,7 @@ struct SidebarView: View {
                         }
                 }
                 .buttonStyle(.plain)
-                .hoverEffect(.highlight)
+                .pointerLift()
                 .accessibilityLabel(tab.displayTitle)
                 .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
@@ -178,7 +178,7 @@ struct SidebarView: View {
             .background(p.raised, in: Capsule())
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
     }
 }
 
@@ -329,7 +329,7 @@ struct TabRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
         .offset(x: swipe)
         .opacity(1 - min(0.6, Double(-swipe) / 200))
         .simultaneousGesture(closeSwipe)

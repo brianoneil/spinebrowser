@@ -38,6 +38,9 @@ final class BrowserStore {
     /// The space being named and bound, if its sheet is up.
     var editingSpaceID: UUID?
     var isSettingsOpen = false
+    /// The Mac's find bar, and what's in it.
+    var isFindOpen = false
+    var findText = ""
     /// The URL pill recedes while you read down a page, or when left alone, and comes back on summon.
     private(set) var isAddressHidden = false {
         didSet { isAddressHidden ? addressFade?.cancel() : scheduleAddressFade() }
@@ -615,6 +618,18 @@ final class BrowserStore {
     }
 
     /// Back closes Reader first, then walks the page's history.
+    #if os(macOS)
+    func findNext() {
+        guard let tabID = focusedPane.tabID, !findText.isEmpty else { return }
+        engine.find(findText, forward: true, in: tabID)
+    }
+
+    func findPrevious() {
+        guard let tabID = focusedPane.tabID, !findText.isEmpty else { return }
+        engine.find(findText, forward: false, in: tabID)
+    }
+    #endif
+
     func goBack() {
         guard let id = focusedPane.tabID else { return }
         if library.reader[id] != nil {

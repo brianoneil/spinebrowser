@@ -55,7 +55,7 @@ struct FaviconView: View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
         Group {
             if let image = store.favicons.image(for: host) {
-                Image(uiImage: image)
+                Image(platformImage: image)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fill)

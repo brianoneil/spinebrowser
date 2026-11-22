@@ -1,5 +1,8 @@
 import RevenueCat
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Settings own the inner display. The Spine steps aside and the sheet opens as a spread whose
 /// gutter is the crease, so the layout holds when the Duo folds into a book. Windows too narrow
@@ -9,13 +12,35 @@ struct SettingsView: View {
     @Environment(\.palette) private var p
 
     var body: some View {
+        #if os(macOS)
+        // The Mac gets a window-sized sheet with one column. The Duo's spread and its custom
+        // alignment do not survive AppKit's constraint pass.
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button("Done") { store.isSettingsOpen = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+
+            ScrollView {
+                SettingsStack()
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(width: 640, height: 680)
+        .background(p.desk)
+        #else
         GeometryReader { safe in
             SettingsSheet(insets: safe.safeAreaInsets)
                 .ignoresSafeArea()
         }
         .background(p.desk.ignoresSafeArea())
         // No navigation title: it would add a bar across the top. The sheet's own title names it.
-        .navigationBarBackButtonHidden()
+        .hideNavigationBackButton()
         .toolbar {
             // Back sits where the browser's Back sits, at the top of the system column.
             ToolbarItem(placement: .topBarLeading) {
@@ -23,6 +48,7 @@ struct SettingsView: View {
                     .tint(p.text)
             }
         }
+        #endif
     }
 }
 
@@ -142,6 +168,9 @@ private struct SettingsStack: View {
             SettingsTitle()
             TabsSection()
             AppearanceSection()
+            #if os(macOS)
+            DefaultBrowserSection()
+            #endif
             PrivacySection()
             ProSection()
             AboutSection()
@@ -150,6 +179,51 @@ private struct SettingsStack: View {
         .frame(maxWidth: 560, alignment: .leading)
     }
 }
+
+#if os(macOS)
+/// The Mac's own habit: being the browser other apps open links with.
+private struct DefaultBrowserSection: View {
+    @Environment(\.palette) private var p
+    @State private var isDefault = false
+    @State private var working = false
+
+    var body: some View {
+        SettingsSection(title: "Browser") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Make Spine the default browser")
+                    .font(.body)
+                    .foregroundStyle(p.text)
+                Text(isDefault
+                     ? "Spine opens links from other apps."
+                     : "macOS asks once before changing it.")
+                    .font(.footnote)
+                    .foregroundStyle(p.textSecondary)
+                Button(isDefault ? "Default browser" : "Make Default") { requestDefault() }
+                    .disabled(isDefault || working)
+            }
+        }
+        .onAppear(perform: refresh)
+    }
+
+    private func requestDefault() {
+        working = true
+        let app = Bundle.main.bundleURL
+        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in
+            NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { _ in
+                Task { @MainActor in
+                    refresh()
+                    working = false
+                }
+            }
+        }
+    }
+
+    private func refresh() {
+        let current = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!)
+        isDefault = current?.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
+    }
+}
+#endif
 
 private struct SettingsTitle: View {
     @Environment(\.palette) private var p
@@ -263,7 +337,13 @@ private struct ProSection: View {
                 if let entitlement = pro.entitlement, entitlement.isActive {
                     ValueRow(title: "Spine Pro", value: "Active", detail: Self.term(of: entitlement))
                     ActionRow(title: "Manage purchase…", detail: "Change plan, cancel, or ask for a refund.") {
+                        #if os(macOS)
+                        if let account = URL(string: "https://apps.apple.com/account/subscriptions") {
+                            Platform.openExternally(account)
+                        }
+                        #else
                         pro.isCustomerCenterOpen = true
+                        #endif
                     }
                 } else {
                     ActionRow(title: "Get Spine Pro…", detail: prices) { pro.isPaywallOpen = true }

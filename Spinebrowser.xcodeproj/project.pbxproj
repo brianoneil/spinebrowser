@@ -9,10 +9,13 @@
 /* Begin PBXBuildFile section */
 		5B0000000000000000000014 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0000000000000000000012 /* RevenueCat */; };
 		5B0000000000000000000015 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0000000000000000000013 /* RevenueCatUI */; };
+		5B000000000000000000002C /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 5B000000000000000000002A /* RevenueCat */; };
+		5B000000000000000000002D /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5B000000000000000000002B /* RevenueCatUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		5B0000000000000000000001 /* Spinebrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spinebrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B0000000000000000000022 /* Spine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -23,6 +26,14 @@
 			);
 			target = 5B0000000000000000000006 /* Spinebrowser */;
 		};
+		5B0000000000000000000023 /* Exceptions for "Spinebrowser" folder in "Spine Mac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				Spinebrowser.entitlements,
+			);
+			target = 5B0000000000000000000021 /* Spine Mac */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -30,6 +41,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				5B0000000000000000000020 /* Exceptions for "Spinebrowser" folder in "Spinebrowser" target */,
+				5B0000000000000000000023 /* Exceptions for "Spinebrowser" folder in "Spine Mac" target */,
 			);
 			path = Spinebrowser;
 			sourceTree = "<group>";
@@ -43,6 +55,15 @@
 			files = (
 				5B0000000000000000000014 /* RevenueCat in Frameworks */,
 				5B0000000000000000000015 /* RevenueCatUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B0000000000000000000024 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B000000000000000000002C /* RevenueCat in Frameworks */,
+				5B000000000000000000002D /* RevenueCatUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -61,6 +82,7 @@
 			isa = PBXGroup;
 			children = (
 				5B0000000000000000000001 /* Spinebrowser.app */,
+				5B0000000000000000000022 /* Spine.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -92,6 +114,30 @@
 			productReference = 5B0000000000000000000001 /* Spinebrowser.app */;
 			productType = "com.apple.product-type.application";
 		};
+		5B0000000000000000000021 /* Spine Mac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B0000000000000000000027 /* Build configuration list for PBXNativeTarget "Spine Mac" */;
+			buildPhases = (
+				5B0000000000000000000026 /* Sources */,
+				5B0000000000000000000024 /* Frameworks */,
+				5B0000000000000000000025 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5B0000000000000000000002 /* Spinebrowser */,
+			);
+			name = "Spine Mac";
+			packageProductDependencies = (
+				5B000000000000000000002A /* RevenueCat */,
+				5B000000000000000000002B /* RevenueCatUI */,
+			);
+			productName = Spine;
+			productReference = 5B0000000000000000000022 /* Spine.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -103,6 +149,9 @@
 				LastUpgradeCheck = 2720;
 				TargetAttributes = {
 					5B0000000000000000000006 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					5B0000000000000000000021 = {
 						CreatedOnToolsVersion = 27.2;
 					};
 				};
@@ -125,6 +174,7 @@
 			projectRoot = "";
 			targets = (
 				5B0000000000000000000006 /* Spinebrowser */,
+				5B0000000000000000000021 /* Spine Mac */,
 			);
 		};
 /* End PBXProject section */
@@ -137,10 +187,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5B0000000000000000000025 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		5B0000000000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B0000000000000000000026 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +317,66 @@
 			};
 			name = Release;
 		};
+		5B0000000000000000000028 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Mac/Spinebrowser-Mac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3YUUX4PHL7;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Mac/Info-Mac.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Spine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Spinebrowser";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.1;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.brainivy.spinebrowser;
+				PRODUCT_NAME = Spine;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5B0000000000000000000029 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Mac/Spinebrowser-Mac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3YUUX4PHL7;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Mac/Info-Mac.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Spine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Spinebrowser";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.1;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.brainivy.spinebrowser;
+				PRODUCT_NAME = Spine;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -270,6 +394,15 @@
 			buildConfigurations = (
 				5B000000000000000000000F /* Debug */,
 				5B0000000000000000000010 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5B0000000000000000000027 /* Build configuration list for PBXNativeTarget "Spine Mac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B0000000000000000000028 /* Debug */,
+				5B0000000000000000000029 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -294,6 +427,16 @@
 			productName = RevenueCat;
 		};
 		5B0000000000000000000013 /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5B0000000000000000000011 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
+		};
+		5B000000000000000000002A /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5B0000000000000000000011 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		5B000000000000000000002B /* RevenueCatUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5B0000000000000000000011 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
 			productName = RevenueCatUI;

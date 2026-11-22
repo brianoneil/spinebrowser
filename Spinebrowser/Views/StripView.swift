@@ -99,7 +99,7 @@ struct StripView: View {
                 }
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
         .contextMenu { SpaceMenu(space: space) }
         .padding(.trailing, 6)
         .accessibilityLabel("\(space.name) space. Switch space")
@@ -117,7 +117,7 @@ struct StripView: View {
                         .padding(-4)
                 }
                 .buttonStyle(.plain)
-                .hoverEffect(.highlight)
+                .pointerLift()
                 .accessibilityLabel(tab.displayTitle)
                 .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
@@ -146,7 +146,7 @@ struct StripView: View {
                 .background(binding.tint(p), in: Circle())
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
         .padding(.trailing, 6)
         .accessibilityLabel("Show sidebar")
     }
@@ -203,7 +203,7 @@ private struct SpineItem: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
         .overlay(alignment: .bottom) {
             if isActive {
                 Button {
@@ -216,7 +216,7 @@ private struct SpineItem: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .hoverEffect(.highlight)
+                .pointerLift()
                 .padding(.bottom, 4)
                 .accessibilityLabel("Close \(tab.displayTitle)")
             }
@@ -269,7 +269,7 @@ private struct RailItem: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverEffect(.highlight)
+        .pointerLift()
         .tabDragSource(tab)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityLabel(tab.displayTitle)

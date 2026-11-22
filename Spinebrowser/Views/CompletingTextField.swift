@@ -1,4 +1,6 @@
 import SwiftUI
+
+#if os(iOS)
 import UIKit
 
 /// A text field that finishes what you're typing. The suggested rest of the address sits
@@ -19,6 +21,7 @@ struct CompletingTextField: UIViewRepresentable {
     let tint: Color
     /// Behind the suggestion. Matches the top hit row it leads to.
     let highlight: Color
+    var onCancel: () -> Void = {}
     let onSubmit: () -> Void
 
     func makeUIView(context: Context) -> UITextField {
@@ -148,3 +151,74 @@ struct CompletingTextField: UIViewRepresentable {
         }
     }
 }
+#else
+import AppKit
+
+/// The Mac keeps the same field contract, with an NSTextField underneath. The inline suggestion
+/// is drawn by the results list here; the field itself stays plain, and Return runs the top hit.
+struct CompletingTextField: NSViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+    @Binding var isDeleting: Bool
+    let suffix: String
+    let textColor: Color
+    let tint: Color
+    let highlight: Color
+    var onCancel: () -> Void = {}
+    let onSubmit: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.placeholderString = placeholder
+        field.isBezeled = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 17)
+        field.textColor = NSColor(textColor)
+        field.usesSingleLineMode = true
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.delegate = context.coordinator
+        // The bar opens ready to type.
+        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        field.textColor = NSColor(textColor)
+        if let editor = field.currentEditor() as? NSTextView {
+            editor.insertionPointColor = NSColor(tint)
+        } else if field.stringValue != text {
+            field.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: CompletingTextField
+
+        init(parent: CompletingTextField) { self.parent = parent }
+
+        func controlTextDidChange(_ note: Notification) {
+            guard let field = note.object as? NSTextField else { return }
+            let now = field.stringValue
+            let deleted = now.count < parent.text.count
+            parent.isDeleting = deleted
+            parent.text = now
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                parent.onCancel()
+                return true
+            }
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            parent.onSubmit()
+            return true
+        }
+    }
+}
+#endif

@@ -16,6 +16,10 @@ struct SpinebrowserApp: App {
                 // Day or Night overrides the system; Match system leaves it alone.
                 .preferredColorScheme(library.settings.theme.colorScheme)
         }
+        #if os(macOS)
+        .defaultSize(width: 1280, height: 800)
+        .windowStyle(.hiddenTitleBar)
+        #endif
         .commands { BrowserCommands() }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { library.saveNow() }
@@ -91,18 +95,34 @@ struct RootView: View {
         )
         NavigationStack {
             Group {
+                #if os(iOS)
                 if Platform.drawsOwnToolbar {
                     // iPad: no system column, so the layout draws its own bar.
                     layout(palette).toolbar(.hidden, for: .navigationBar)
                 } else {
                     layout(palette).toolbar { systemColumn(palette) }
                 }
+                #else
+                layout(palette)
+                #endif
             }
             // Settings take the whole display; the Spine and the page step aside.
+            #if os(iOS)
             .navigationDestination(isPresented: $store.isSettingsOpen) { SettingsView() }
+            #endif
         }
         .environment(\.palette, palette)
         .tint(palette.accent)
+        #if os(macOS)
+        .background(MacWindowConfigurator())
+        .overlay(alignment: .topTrailing) {
+            if store.isFindOpen {
+                FindBar()
+                    .environment(store)
+                    .environment(\.palette, palette)
+            }
+        }
+        #endif
         .sheet(item: Binding(
             get: { store.editingSpaceID.map(SpaceSheetID.init) },
             set: { store.editingSpaceID = $0?.id }
@@ -116,13 +136,23 @@ struct RootView: View {
                 .environment(store)
                 .environment(\.palette, palette)
         }
+        #if os(macOS)
+        .sheet(isPresented: $store.isSettingsOpen) {
+            SettingsView()
+                .environment(store)
+                .environment(pro)
+                .environment(\.palette, palette)
+        }
+        #endif
         // The paywall's layout and products come from the RevenueCat dashboard.
         .sheet(isPresented: $pro.isPaywallOpen) {
             PaywallView(displayCloseButton: true)
                 .onPurchaseCompleted { pro.received($0) }
                 .onRestoreCompleted { pro.received($0) }
         }
+        #if os(iOS)
         .presentCustomerCenter(isPresented: $pro.isCustomerCenterOpen)
+        #endif
         .task {
             // Housekeeping: shelve expired Today tabs, give idle tabs' memory back.
             while !Task.isCancelled {
@@ -131,6 +161,9 @@ struct RootView: View {
                 store.unloadIdleTabs()
             }
         }
+        #if os(macOS) && DEBUG
+        .task { await DebugSnapshot.captureAfterDelay() }
+        #endif
     }
 }
 
@@ -143,6 +176,7 @@ extension RootView {
         .background(palette.desk.ignoresSafeArea())
     }
 
+    #if os(iOS)
     /// The Duo's system column: standard bar items, laid out by iOS. Back/forward, share and Pair
     /// up top; the Spine toggle and New tab at the foot.
     @ToolbarContentBuilder
@@ -195,4 +229,5 @@ extension RootView {
             .tint(palette.accent)
         }
     }
+    #endif
 }

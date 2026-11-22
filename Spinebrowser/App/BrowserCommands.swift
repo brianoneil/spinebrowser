@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 extension FocusedValues {
     /// The window the keyboard is talking to.
@@ -99,6 +102,46 @@ struct BrowserCommands: Commands {
                 }
             }
         }
+
+        #if os(macOS)
+        CommandGroup(after: .newItem) {
+            Button("Close Window") { (NSApp.keyWindow ?? NSApp.mainWindow)?.performClose(nil) }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+        }
+
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { store?.isSettingsOpen = true }
+                .keyboardShortcut(",")
+                .disabled(store == nil)
+        }
+
+        CommandGroup(after: .textEditing) {
+            Button("Find…") { store?.isFindOpen = true }
+                .keyboardShortcut("f")
+                .disabled(store == nil)
+            Button("Find Next") { store?.findNext() }
+                .keyboardShortcut("g")
+                .disabled(store?.findText.isEmpty ?? true)
+            Button("Find Previous") { store?.findPrevious() }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(store?.findText.isEmpty ?? true)
+        }
+
+        CommandGroup(replacing: .printItem) {
+            Button("Print…") { act { $0.engine.printPage($1) } }
+                .keyboardShortcut("p")
+                .disabled(focusedTabID == nil)
+        }
+        #endif
+
+        #if os(macOS) && DEBUG
+        CommandMenu("Debug") {
+            Button("Dump Window") { DebugSnapshot.captureNow() }
+                .keyboardShortcut("d", modifiers: [.command, .option, .control])
+            Button("Test Glance") { act { $0.engine.debugContextMenu($1) } }
+                .disabled(focusedTabID == nil)
+        }
+        #endif
     }
 
     private var focusedTabID: UUID? { store?.focusedPane.tabID }

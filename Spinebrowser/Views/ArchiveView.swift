@@ -39,7 +39,7 @@ struct ArchiveView: View {
                 TextField("Search the archive", text: $query)
                     .font(Typeface.row)
                     .foregroundStyle(p.text)
-                    .textInputAutocapitalization(.never)
+                    .noAutocapitalization()
                     .autocorrectionDisabled()
             }
             .padding(.vertical, 11)
