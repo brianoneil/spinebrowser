@@ -7,7 +7,16 @@ enum DebugSnapshot {
     @MainActor
     static func captureAfterDelay() async {
         guard ProcessInfo.processInfo.environment["SPINE_SNAPSHOT"] != nil else { return }
-        try? await Task.sleep(for: .seconds(3))
+        try? await Task.sleep(for: .seconds(2))
+        // SPINE_WINDOW=1000x760 sizes the window first, to check a narrower layout.
+        if let size = ProcessInfo.processInfo.environment["SPINE_WINDOW"]?.split(separator: "x").compactMap({ Double($0) }),
+           size.count == 2, let window = NSApp.windows.first(where: { $0.isVisible }) {
+            var frame = window.frame
+            frame.origin.y += frame.height - size[1]
+            frame.size = NSSize(width: size[0], height: size[1])
+            window.setFrame(frame, display: true)
+        }
+        try? await Task.sleep(for: .seconds(1))
         captureNow()
     }
 

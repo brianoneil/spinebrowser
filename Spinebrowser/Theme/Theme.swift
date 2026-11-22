@@ -149,6 +149,8 @@ enum Typeface {
     // so the Spine takes the sizes from the Mac boards instead.
     static let spaceTitle = Font.system(size: 22, weight: .semibold, design: .serif)
     static let row = Font.system(size: 14)
+    /// An address among the command bar's results: a size up from the rows around it.
+    static let destination = Font.system(size: 16, weight: .semibold)
     static let rowActive = Font.system(size: 14, weight: .semibold)
     static let footnote = Font.system(size: 12)
     static let footnoteStrong = Font.system(size: 12, weight: .semibold)
@@ -157,6 +159,7 @@ enum Typeface {
     #else
     static let spaceTitle = Font.system(.title2, design: .serif).weight(.semibold)
     static let row = Font.subheadline
+    static let destination = Font.headline
     static let rowActive = Font.subheadline.weight(.semibold)
     static let footnote = Font.footnote
     static let footnoteStrong = Font.footnote.weight(.semibold)

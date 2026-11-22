@@ -34,7 +34,13 @@ struct PadToolbar: View {
         let focusedID = store.focusedPane.tabID
         let canRead = store.canRead(focusedID)
         let isReading = store.readerSession(for: focusedID) != nil
+        // On the Mac both button groups take the same width, so the address between them sits on
+        // the page's centre. The wider group sets it: four buttons, or three in a narrow window.
+        let side: CGFloat? = Platform.isMac
+            ? Self.height * (showsPair ? 4 : 3) + Self.gap * (showsPair ? 3 : 2)
+            : nil
         HStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
             GlassCircle(label: "Spine", symbol: "sidebar.left", help: "Change the Spine’s width (⌃⌘S)") {
                 withAnimation(spring) {
                     // A narrow window only has the overlay; the open layout cycles the Spine's widths.
@@ -52,6 +58,8 @@ struct PadToolbar: View {
             .padding(.horizontal, 2)
             .frame(height: Self.height)
             .glassEffect(.regular.interactive(), in: Capsule())
+            }
+            .frame(width: side, alignment: .leading)
 
             Spacer(minLength: 0)
 
@@ -61,6 +69,7 @@ struct PadToolbar: View {
                 Spacer(minLength: 0)
             }
 
+            HStack(spacing: Self.gap) {
             // Reader is offered only where Readability finds an article, as in the pill.
             if canRead {
                 GlassCircle(label: isReading ? "Hide Reader" : "Show Reader",
@@ -113,6 +122,8 @@ struct PadToolbar: View {
             .glassEffect(.regular.tint(p.accent).interactive(), in: Circle())
             .pointerHelp("New tab (⌘T)")
             .accessibilityLabel("New tab")
+            }
+            .frame(width: side, alignment: .trailing)
         }
         .padding(.leading, leading)
         .padding(.trailing, Platform.isMac ? 16 : 10)

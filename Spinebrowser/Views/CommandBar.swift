@@ -26,7 +26,9 @@ struct CommandBar: View {
             // Results stop above the keyboard and scroll when they don't fit.
             let top = geo.frame(in: .global).minY
             let visible = min(geo.size.height, keyboardTop - top)
-            let resultsMax = max(88, visible - 54 - 57 - 16)
+            // On the Mac the address is in the bar above, so the panel drops in just under it.
+            let panelTop: CGFloat = Platform.isMac ? 10 : 54
+            let resultsMax = max(88, visible - panelTop - 57 - 16)
             ZStack(alignment: .top) {
                 p.scrim
                     .contentShape(Rectangle())
@@ -58,7 +60,7 @@ struct CommandBar: View {
                 .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.18), radius: 24, y: 12)
                 .frame(maxWidth: 480)
                 .padding(.horizontal, 16)
-                .padding(.top, 54)
+                .padding(.top, panelTop)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -166,7 +168,7 @@ private struct CommandRow: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(result.title)
                         // An address is the destination itself, so it reads a size up from the rows around it.
-                        .font(result.isDestination ? .headline : isTop ? Typeface.rowActive : Typeface.row)
+                        .font(result.isDestination ? Typeface.destination : isTop ? Typeface.rowActive : Typeface.row)
                         .foregroundStyle(p.text)
                         .lineLimit(1)
                         .truncationMode(result.isDestination ? .middle : .tail)
