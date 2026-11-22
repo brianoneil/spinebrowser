@@ -30,7 +30,8 @@ Archives live in `Application Support/Extensions/<id>.zip`, beside `installed.js
 
 ## Using it
 
-- Open an extension's page on the Chrome Web Store. The puzzle piece in the address turns verdigris. Tap it, then **Add this extension**.
+- Open an extension's page on the Chrome Web Store. The store's own button, dead anywhere that isn't Chrome, reads **Add to Spine** and works. A script on the store page wakes it and hands the click to the browser. It matches the English label, so other languages fall back to the next way in.
+- Or use the puzzle piece in the address, which turns verdigris on a store page. Tap it, then **Add this extension**.
 - With extensions running, the puzzle piece lists them, badge and all. Tap one for its popup: a sheet on the Duo's cover, a popover from the button on iPad and Mac.
 - Settings ▸ Extensions switches each one on or off. Touch and hold to remove; right-click on the Mac.
 

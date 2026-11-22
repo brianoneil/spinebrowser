@@ -43,7 +43,15 @@ struct ExtensionButton: Identifiable {
 final class ExtensionStore: NSObject {
     enum Failure: Error { case unavailable }
 
+    /// An extension a store page asked to add, and the tab showing that page.
+    struct Wanted: Equatable {
+        let id: String
+        let tabID: UUID
+    }
+
     private(set) var installed: [InstalledExtension] = []
+    /// Set when the store's own button is pressed. The tab's puzzle piece picks it up and asks.
+    private(set) var wanted: Wanted?
     /// Counts up when an extension changes its button, so the menu reads it again.
     private(set) var buttonGeneration = 0
 
@@ -125,6 +133,13 @@ final class ExtensionStore: NSObject {
         save()
         await load(entry)
     }
+
+    func want(_ id: String, in tabID: UUID) {
+        guard !isInstalled(id) else { return }
+        wanted = Wanted(id: id, tabID: tabID)
+    }
+
+    func clearWanted() { wanted = nil }
 
     func isInstalled(_ id: String) -> Bool { installed.contains { $0.id == id } }
 

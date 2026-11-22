@@ -60,6 +60,12 @@ struct ExtensionsMenu: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
             .padding(.trailing, 4)
             .accessibilityLabel("Extensions")
+            // The store page's own button was pressed in this tab.
+            .onChange(of: extensions.wanted) { _, wanted in
+                guard let wanted, wanted.tabID == tab.id else { return }
+                extensions.clearWanted()
+                if !isFetching, candidate == nil { fetch(wanted.id) }
+            }
             .alert("Add \(candidate?.name ?? "extension")?", isPresented: isAsking, presenting: candidate) { found in
                 Button("Add") { Task { await extensions.install(found) } }
                 Button("Cancel", role: .cancel) {}

@@ -45,6 +45,13 @@ final class WebEngine: NSObject {
             WKUserScript(source: Self.dragScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
         configuration.userContentController.add(DragMessageProxy(engine: self), name: Self.dragMessage)
+        // The Chrome Web Store's own button adds to this browser instead of sitting disabled.
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: Self.storeScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        )
+        configuration.userContentController.addScriptMessageHandler(
+            StoreMessageProxy(engine: self), contentWorld: .page, name: Self.storeMessage
+        )
         #if os(macOS)
         // The Mac's long-press is the right mouse button. Links hand themselves to the app
         // before WebKit's own menu can open, so they can become a Glance.
@@ -53,6 +60,69 @@ final class WebEngine: NSObject {
         )
         configuration.userContentController.add(ContextMenuProxy(engine: self), name: Self.contextMessage)
         #endif
+    }
+
+    private static let storeMessage = "spineExtensionStore"
+    /// The store disables "Add to Chrome" anywhere that isn't Chrome. On an extension's page this
+    /// wakes the button, renames it, and sends its click here. Other languages keep the puzzle piece.
+    private static let storeScript = """
+    (function () {
+      if (location.host !== 'chromewebstore.google.com') return;
+      var handler = window.webkit && webkit.messageHandlers && webkit.messageHandlers.\(storeMessage);
+      if (!handler) return;
+      var installed = false;
+      function current() {
+        var match = location.pathname.match(/\\/detail\\/(?:[^\\/]+\\/)?([a-p]{32})/);
+        return match && match[1];
+      }
+      function label(button, text) {
+        var walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT), node;
+        while ((node = walker.nextNode())) {
+          if (!node.nodeValue.trim()) continue;
+          if (node.nodeValue !== text) node.nodeValue = text;
+          return;
+        }
+      }
+      function dress() {
+        if (!current()) return;
+        document.querySelectorAll('button').forEach(function (button) {
+          if (!button.dataset.spine) {
+            if (!/^Add to (Chrome|Desktop)$/i.test((button.textContent || '').trim())) return;
+            button.dataset.spine = '1';
+            button.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              var id = current();
+              if (id && !installed) handler.postMessage({ kind: 'add', id: id });
+            }, true);
+          }
+          label(button, installed ? 'Added to Spine' : 'Add to Spine');
+          if (button.disabled !== installed) button.disabled = installed;
+        });
+      }
+      function refresh() {
+        var id = current();
+        if (!id) return;
+        handler.postMessage({ kind: 'state', id: id }).then(function (answer) {
+          installed = !!answer;
+          dress();
+        }, function () {});
+      }
+      new MutationObserver(dress).observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, attributeFilter: ['disabled']
+      });
+      setInterval(refresh, 1500);
+      refresh();
+    })();
+    """
+
+    /// The store page asks whether its extension is added, or asks to add it. Only the page for
+    /// that extension may ask, and adding still waits for a yes.
+    fileprivate func storeAsked(_ body: Any, in webView: WKWebView?) -> Bool {
+        guard let message = body as? [String: String], let id = message["id"], let webView,
+              ChromeWebStore.extensionID(in: webView.url) == id, let extensions = library?.extensions else { return false }
+        if message["kind"] == "add", let tabID = tabID(for: webView) { extensions.want(id, in: tabID) }
+        return extensions.isInstalled(id)
     }
 
     private static let dragMessage = "spineDrag"
@@ -530,6 +600,22 @@ private final class DragMessageProxy: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let kind = message.body as? String else { return }
         MainActor.assumeIsolated { engine?.pageDrag(kind, in: message.webView) }
+    }
+}
+
+/// The Chrome Web Store's button, asking after its extension.
+private final class StoreMessageProxy: NSObject, WKScriptMessageHandlerWithReply {
+    weak var engine: WebEngine?
+
+    init(engine: WebEngine) { self.engine = engine }
+
+    func userContentController(
+        _ controller: WKUserContentController,
+        didReceive message: WKScriptMessage,
+        replyHandler: @escaping (Any?, String?) -> Void
+    ) {
+        guard message.frameInfo.isMainFrame else { return replyHandler(false, nil) }
+        replyHandler(MainActor.assumeIsolated { engine?.storeAsked(message.body, in: message.webView) ?? false }, nil)
     }
 }
 
