@@ -53,6 +53,8 @@ final class ExtensionStore: NSObject {
     @ObservationIgnored private var tabs: [UUID: ExtensionTab] = [:]
     @ObservationIgnored private var windows: [UUID: ExtensionWindow] = [:]
     @ObservationIgnored private var activeTabs: [UUID: UUID] = [:]
+    /// The button last pressed, in its window, so the popup opens from it.
+    @ObservationIgnored private var popupAnchor: CGRect?
     @ObservationIgnored private let log = Logger(subsystem: "Spinebrowser", category: "Extensions")
 
     /// One controller identity for good, so extension storage survives a relaunch.
@@ -230,8 +232,9 @@ final class ExtensionStore: NSObject {
     }
 
     /// Pressing an extension's button: its popup opens, or it hears a click.
-    func press(_ id: String, in tabID: UUID?) {
+    func press(_ id: String, in tabID: UUID?, from frame: CGRect? = nil) {
         guard let context = contexts[id] else { return }
+        popupAnchor = frame
         context.performAction(for: tabID.map(tab(for:)))
     }
 
@@ -304,6 +307,41 @@ final class ExtensionStore: NSObject {
             } catch {
                 log.error("Couldn't install \(item): \(String(describing: error))")
             }
+        }
+        await probe()
+    }
+
+    /// Test-only, for a Mac no one can see: SPINE_EXTENSION_PROBE is JavaScript run in the page in
+    /// front once extensions have settled, and SPINE_PRESS_EXTENSION an id whose button gets
+    /// pressed. Both report to the log.
+    private func probe() async {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SPINE_EXTENSION_PROBE"] != nil || environment["SPINE_PRESS_EXTENSION"] != nil else { return }
+        try? await Task.sleep(for: .seconds(6))
+        guard let library, let window = library.activeWindow else { return log.notice("Probe: no window") }
+        // A window on a blank tab gets a page to try.
+        let tabID: UUID
+        if let tab = window.focusedTab, tab.url != nil {
+            tabID = tab.id
+            library.engine.reload(tabID)
+        } else {
+            tabID = window.newTab(url: URL(string: "https://en.wikipedia.org/wiki/WebKit")).id
+            window.isCommandBarOpen = false
+        }
+        try? await Task.sleep(for: .seconds(8))
+        if let script = environment["SPINE_EXTENSION_PROBE"], let view = library.engine.loadedView(tabID) {
+            let answer = try? await view.evaluateJavaScript(script)
+            log.notice("Probe: \(String(describing: answer), privacy: .public) at \(view.url?.absoluteString ?? "nowhere", privacy: .public)")
+        }
+        if let id = environment["SPINE_PRESS_EXTENSION"] {
+            log.notice("Probe buttons: \(self.buttons(for: tabID).map { "\($0.label) [\($0.badge)]" }.joined(separator: ", "), privacy: .public)")
+            press(id, in: tabID)
+            try? await Task.sleep(for: .seconds(3))
+            #if os(macOS)
+            let popover = contexts[id]?.action(for: tab(for: tabID))?.popupPopover
+            log.notice("Probe popup: shown \(popover?.isShown ?? false), size \(String(describing: popover?.contentSize), privacy: .public)")
+            DebugSnapshot.captureNow()
+            #endif
         }
     }
     #endif
@@ -388,7 +426,7 @@ extension ExtensionStore: WKWebExtensionControllerDelegate {
         for context: WKWebExtensionContext,
         completionHandler: @escaping ((any Error)?) -> Void
     ) {
-        ExtensionPopup.present(action)
+        ExtensionPopup.present(action, from: popupAnchor)
         completionHandler(nil)
     }
 }

@@ -1,6 +1,6 @@
 # Chrome extensions
 
-Spinebrowser runs Chrome extensions straight from the Chrome Web Store. This is a working prototype on the Duo, on the `chrome-extensions` branch.
+Spinebrowser runs Chrome extensions straight from the Chrome Web Store. This is a working prototype on the Duo, iPad and Mac, on the `chrome-extensions` branch.
 
 ## The idea
 
@@ -24,15 +24,19 @@ That leaves three jobs for us:
 
 Every page shares one `WKWebViewConfiguration`, and that configuration now carries the controller. That's the whole hook for content scripts: WebKit injects them into any page it knows about. An extension's own pages (options, a welcome page) need that extension's configuration, so `WebEngine` picks it when a tab's address belongs to an extension.
 
+Extensions start with the browser, not with the first page, so a window that opens on a blank tab still has its workers running.
+
 Archives live in `Application Support/Extensions/<id>.zip`, beside `installed.json`. The Chrome id is the extension's `uniqueIdentifier`, so its storage survives a relaunch.
 
 ## Using it
 
 - Open an extension's page on the Chrome Web Store. The puzzle piece in the address turns verdigris. Tap it, then **Add this extension**.
-- With extensions running, the puzzle piece lists them, badge and all. Tap one for its popup.
-- Settings ▸ Extensions switches each one on or off. Touch and hold to remove.
+- With extensions running, the puzzle piece lists them, badge and all. Tap one for its popup: a sheet on the Duo's cover, a popover from the button on iPad and Mac.
+- Settings ▸ Extensions switches each one on or off. Touch and hold to remove; right-click on the Mac.
 
-## What we checked on the Duo simulator
+## What we checked
+
+On the Duo simulator.
 
 With the sample in `docs/extension-sample` (Manifest V3):
 
@@ -48,7 +52,11 @@ With Dark Reader, installed from the store through the puzzle piece:
 - Its popup works and knows the current site.
 - Switched off, new pages load light.
 
-To install without the UI, launch a debug build with `-SPINE_INSTALL_EXTENSION <id or path to a zip>`. Ids and paths can be comma-separated.
+On the iPad simulator, with both: content scripts run, storage holds across a relaunch, the menu lists both, and Dark Reader's popup opens as a popover from the puzzle piece.
+
+On the Mac, through debug probes, because this machine can't record its screen: Dark Reader installs from the store, survives a relaunch, darkens Wikipedia, shows its button, and its popover opens at full size. The puzzle piece sits in the bar beside the address. Nobody has clicked through the Mac's menu or the install prompt by hand yet.
+
+To install without the UI, launch a debug build with `-SPINE_INSTALL_EXTENSION <id or path to a zip>`. Ids and paths can be comma-separated. On the Mac it's an environment variable of the same name, and the sandbox only reads paths inside the app's container. Two more, Mac-minded: `SPINE_EXTENSION_PROBE` runs JavaScript in the page in front and logs the answer, and `SPINE_PRESS_EXTENSION` presses an extension's button and logs whether its popup showed.
 
 ## What it doesn't do yet
 
@@ -59,5 +67,4 @@ To install without the UI, launch a debug build with `-SPINE_INSTALL_EXTENSION <
 - **Switching off isn't instant.** Scripts already in a page stay until it reloads.
 - **Clear browsing data skips extension storage.**
 - **The popup is the system's sheet.** Nothing here is drawn in Paper yet: the menu, the sheet and the Settings rows borrow existing parts.
-- **Mac builds, untested.** iPad should behave like the Duo, also untested.
 - **App Review.** Extensions are code we download. WebKit runs it, which is the carve-out other browsers use, but it needs a read of the guidelines before submission.

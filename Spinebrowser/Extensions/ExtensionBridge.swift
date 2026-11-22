@@ -136,10 +136,13 @@ final class ExtensionWindow: NSObject, WKWebExtensionWindow {
 /// Shows an extension's popup: a popover where there's room, a sheet on the cover display.
 @MainActor
 enum ExtensionPopup {
-    static func present(_ action: WKWebExtension.Action) {
+    /// `frame` is the button that asked, in SwiftUI's window space: origin top left.
+    static func present(_ action: WKWebExtension.Action, from frame: CGRect?) {
         #if os(macOS)
-        guard let popover = action.popupPopover, let view = NSApp.keyWindow?.contentView else { return }
-        let anchor = NSRect(x: view.bounds.midX - 1, y: view.bounds.maxY - 44, width: 2, height: 2)
+        guard let popover = action.popupPopover,
+              let view = (NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible })?.contentView else { return }
+        var anchor = frame ?? CGRect(x: view.bounds.midX - 1, y: 44, width: 2, height: 2)
+        if !view.isFlipped { anchor.origin.y = view.bounds.height - anchor.maxY }
         popover.show(relativeTo: anchor, of: view, preferredEdge: .minY)
         #else
         guard let popup = action.popupViewController else { return }
@@ -150,7 +153,8 @@ enum ExtensionPopup {
         if let popover = popup.popoverPresentationController {
             // Under the address pill, where the button that opened it sits.
             popover.sourceView = top.view
-            popover.sourceRect = CGRect(x: top.view.bounds.midX - 1, y: top.view.safeAreaInsets.top + 52, width: 2, height: 2)
+            popover.sourceRect = frame.map { top.view.convert($0, from: nil) }
+                ?? CGRect(x: top.view.bounds.midX - 1, y: top.view.safeAreaInsets.top + 52, width: 2, height: 2)
             popover.permittedArrowDirections = .up
         }
         top.present(popup, animated: true)

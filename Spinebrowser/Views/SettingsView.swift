@@ -350,7 +350,7 @@ private struct ExtensionsSection: View {
                 title: "Find extensions",
                 detail: extensions.installed.isEmpty
                     ? "Opens the Chrome Web Store. On an extension's page, the puzzle piece in the address adds it."
-                    : "Opens the Chrome Web Store. Touch and hold an extension here to remove it."
+                    : "Opens the Chrome Web Store. \(Platform.isMac ? "Right-click" : "Touch and hold") an extension here to remove it."
             ) {
                 store.isSettingsOpen = false
                 store.newTab(url: ChromeWebStore.home)

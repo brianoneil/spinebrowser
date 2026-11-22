@@ -9,6 +9,7 @@ struct ExtensionsMenu: View {
     @State private var candidate: ExtensionCandidate?
     @State private var isFetching = false
     @State private var didFail = false
+    @State private var frame = CGRect.zero
 
     var body: some View {
         let extensions = store.library.extensions
@@ -24,7 +25,7 @@ struct ExtensionsMenu: View {
                 Section {
                     ForEach(buttons) { button in
                         Button {
-                            extensions.press(button.id, in: tab.id)
+                            extensions.press(button.id, in: tab.id, from: frame)
                         } label: {
                             Label {
                                 Text(button.badge.isEmpty ? button.label : "\(button.label) · \(button.badge)")
@@ -50,10 +51,13 @@ struct ExtensionsMenu: View {
                             .foregroundStyle(offered != nil ? p.accent : p.textSecondary)
                     }
                 }
-                .frame(width: 30, height: 30)
+                // The Mac's bar is shorter, and the button mustn't make the address taller.
+                .frame(width: 30, height: Platform.isMac ? 25 : 30)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Where the button sits in its window, so a popup can open from it.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
             .padding(.trailing, 4)
             .accessibilityLabel("Extensions")
             .alert("Add \(candidate?.name ?? "extension")?", isPresented: isAsking, presenting: candidate) { found in

@@ -65,6 +65,8 @@ final class Library {
             seed()
         }
         sweepArchive()
+        // Extensions start with the browser, not with the first page: their workers run either way.
+        _ = extensions
     }
 
     // MARK: Lookups
