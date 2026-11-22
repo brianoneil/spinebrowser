@@ -30,6 +30,8 @@ Archives live in `Application Support/Extensions/<id>.zip`, beside `installed.js
 
 ## Using it
 
+- Type "extensions" in the command bar. **Find extensions** opens the Chrome Web Store; **Manage extensions** opens Settings. Both are there with nothing installed.
+- The store turns phones away, so its pages are asked for under a desktop browser's name. The layout still fits the window.
 - Open an extension's page on the Chrome Web Store. The store's own button, dead anywhere that isn't Chrome, reads **Add to Spine** and works. A script on the store page wakes it and hands the click to the browser. It matches the English label, so other languages fall back to the next way in.
 - Or use the puzzle piece, which turns verdigris on a store page. On the Duo it sits in the address pill. On iPad and Mac it's a button in the bar, because the Mac's address grows under the pointer and a button that slides is a bad place to hang a popup. Tap it, then **Add this extension**.
 - With extensions running, the puzzle piece lists them, badge and all. Tap one for its popup: a sheet on the Duo's cover, a popover from the button on iPad and Mac.

@@ -267,6 +267,7 @@ struct CommandResult: Identifiable {
         case archiveToday
         case showArchive
         case showSettings
+        case findExtensions
         case newTab
         case spine(SpineState)
         case reader(UUID)
@@ -663,6 +664,14 @@ enum CommandModel {
         commands.append(CommandResult(id: "archive", kind: .showArchive, title: "Show the archive", symbol: "clock"))
         commands.append(CommandResult(id: "settings", kind: .showSettings, title: "Settings", symbol: "slider.horizontal.3"))
         commands.append(CommandResult(
+            id: "extensions", kind: .findExtensions, title: "Find extensions", subtitle: "Chrome Web Store",
+            symbol: "puzzlepiece.extension"
+        ))
+        commands.append(CommandResult(
+            id: "manage-extensions", kind: .showSettings, title: "Manage extensions", subtitle: "In Settings",
+            symbol: "puzzlepiece.extension"
+        ))
+        commands.append(CommandResult(
             id: "edit-space", kind: .editSpace, title: "Edit \(store.activeSpace.name)", subtitle: "Name, emoji and binding",
             symbol: "paintpalette"
         ))
@@ -712,6 +721,7 @@ enum CommandModel {
         case .archiveToday: store.archiveAllToday()
         case .showArchive: store.isArchiveOpen = true
         case .showSettings: store.isSettingsOpen = true
+        case .findExtensions: store.newTab(url: ChromeWebStore.home)
         case .newTab: store.newTab()
         case .spine(let state): store.setSpine(state)
         case .reader(let id): store.toggleReader(id)

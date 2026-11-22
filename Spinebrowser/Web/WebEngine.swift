@@ -475,6 +475,11 @@ extension WebEngine: WKNavigationDelegate {
     /// so an ad's iframe can't throw you into another app.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = navigationAction.request.url else { return .allow }
+        if navigationAction.targetFrame?.isMainFrame ?? false {
+            // The Chrome Web Store turns phones away at the door. It gets a desktop's name.
+            let wanted = ChromeWebStore.isStore(url) ? ChromeWebStore.desktopUserAgent : nil
+            if webView.customUserAgent != wanted { webView.customUserAgent = wanted }
+        }
         if navigationAction.navigationType == .linkActivated, navigationAction.targetFrame?.isMainFrame ?? false,
            let tabID = glancesOffSite(url, from: webView) {
             library?.peek(url, from: tabID, origin: WebContainerView.recentPress)

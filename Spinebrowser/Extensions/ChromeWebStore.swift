@@ -4,6 +4,14 @@ import Foundation
 enum ChromeWebStore {
     static let home = URL(string: "https://chromewebstore.google.com/category/extensions")!
 
+    static func isStore(_ url: URL?) -> Bool {
+        url?.host()?.lowercased() == "chromewebstore.google.com"
+    }
+
+    /// The store only opens to desktop browsers, so its pages are asked for as a Mac would.
+    /// The layout still fits the window: only the name changes.
+    static let desktopUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+
     /// The extension a store page is about. Ids are 32 letters, a to p.
     static func extensionID(in url: URL?) -> String? {
         guard let url, let host = url.host()?.lowercased() else { return nil }
