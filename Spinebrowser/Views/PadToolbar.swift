@@ -35,17 +35,17 @@ struct PadToolbar: View {
         let canRead = store.canRead(focusedID)
         let isReading = store.readerSession(for: focusedID) != nil
         HStack(spacing: Self.gap) {
-            GlassCircle(label: "Spine", symbol: "sidebar.left") {
+            GlassCircle(label: "Spine", symbol: "sidebar.left", help: "Change the Spine’s width (⌃⌘S)") {
                 withAnimation(spring) {
                     // A narrow window only has the overlay; the open layout cycles the Spine's widths.
                     if showsPair { store.cycleSpine() } else { store.isSidebarOverlayOpen.toggle() }
                 }
             }
             HStack(spacing: 0) {
-                BarIcon(label: "Back", symbol: "chevron.left", isEnabled: store.canGoBack) {
+                BarIcon(label: "Back", symbol: "chevron.left", help: "Back (⌘[)", isEnabled: store.canGoBack) {
                     store.goBack()
                 }
-                BarIcon(label: "Forward", symbol: "chevron.right", isEnabled: runtime.canGoForward) {
+                BarIcon(label: "Forward", symbol: "chevron.right", help: "Forward (⌘])", isEnabled: runtime.canGoForward) {
                     if let focusedID { store.engine.goForward(focusedID) }
                 }
             }
@@ -65,6 +65,7 @@ struct PadToolbar: View {
             if canRead {
                 GlassCircle(label: isReading ? "Hide Reader" : "Show Reader",
                             symbol: isReading ? "doc.plaintext.fill" : "doc.plaintext",
+                            help: isReading ? "Hide Reader (⇧⌘R)" : "Show Reader (⇧⌘R)",
                             isOn: isReading) {
                     withAnimation(spring) { store.toggleReader(focusedID) }
                 }
@@ -80,6 +81,7 @@ struct PadToolbar: View {
                 // Without this the Mac draws its own bezel around the link and the button grows.
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: Circle())
+                .pointerHelp("Share this page")
                 .accessibilityLabel("Share")
             } else {
                 // Nothing to share yet; the button stays put so the bar doesn't shift.
@@ -93,7 +95,8 @@ struct PadToolbar: View {
                     .accessibilityRemoveTraits(.isImage)
             }
             if showsPair {
-                GlassCircle(label: store.isPair ? "Close the Pair" : "Open a Pair", symbol: "rectangle.split.2x1") {
+                GlassCircle(label: store.isPair ? "Close the Pair" : "Open a Pair", symbol: "rectangle.split.2x1",
+                            help: store.isPair ? "Close the Pair (⌥⌘P)" : "Open a Pair (⌥⌘P)") {
                     withAnimation(spring) { store.togglePair() }
                 }
             }
@@ -108,6 +111,7 @@ struct PadToolbar: View {
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.tint(p.accent).interactive(), in: Circle())
+            .pointerHelp("New tab (⌘T)")
             .accessibilityLabel("New tab")
         }
         .padding(.leading, leading)
@@ -120,6 +124,7 @@ struct PadToolbar: View {
 private struct GlassCircle: View {
     let label: String
     let symbol: String
+    var help = ""
     /// A mode that's on (Reader while reading) takes the accent, as the pill does.
     var isOn = false
     let action: () -> Void
@@ -135,6 +140,7 @@ private struct GlassCircle: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: Circle())
+        .pointerHelp(help)
         .accessibilityLabel(label)
     }
 }
@@ -142,6 +148,7 @@ private struct GlassCircle: View {
 private struct BarIcon: View {
     let label: String
     let symbol: String
+    var help = ""
     let isEnabled: Bool
     let action: () -> Void
 
@@ -156,6 +163,7 @@ private struct BarIcon: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
+        .pointerHelp(help)
         .accessibilityLabel(label)
     }
 }

@@ -237,6 +237,15 @@ struct MacWindowConfigurator: NSViewRepresentable {
 extension View {
     func pointerLift() -> some View { modifier(PointerLift()) }
 
+    /// A tooltip under the Mac's pointer: the control's name and its shortcut.
+    func pointerHelp(_ text: String) -> some View {
+        #if os(macOS)
+        help(text)
+        #else
+        self
+        #endif
+    }
+
     /// iOS-only text-field tuning, compiled out on the Mac.
     func noAutocapitalization() -> some View {
         #if os(iOS)

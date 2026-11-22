@@ -156,6 +156,10 @@ struct URLPill: View {
     /// Set while a drag is under way and briefly after, so the Button doesn't treat a flick as a tap.
     @State private var isDragging = false
     @State private var ignoreTapsUntil = Date.distantPast
+    /// The Mac's pointer is resting on the pill, so it unfurls to show where on the site you are.
+    @State private var hovering = false
+    /// Just after Copy link, the pill says so.
+    @State private var copied = false
 
     var body: some View {
         let runtime = store.runtime[tab.id]
@@ -168,6 +172,9 @@ struct URLPill: View {
         let isReading = store.readerSession(for: tab.id) != nil
         // The Mac's bar has its own Reader button beside the address.
         let showsReader = canRead && !Platform.isMac
+        let unfurled = Platform.isMac && hovering
+        let path = url.map { $0.path(percentEncoded: false) }.flatMap { $0.count > 1 ? $0 : nil }
+            .map { $0.count > 40 ? $0.prefix(39) + "…" : $0 }
         HStack(spacing: 0) {
         Button {
             guard !isDragging, Date.now >= ignoreTapsUntil else { return }
@@ -192,10 +199,26 @@ struct URLPill: View {
                     // Madder always comes with a word.
                     Text("Not secure").font(Typeface.footnoteStrong).foregroundStyle(p.danger)
                 }
-                Text(host)
-                    .font(Typeface.footnoteStrong)
-                    .foregroundStyle(p.text)
-                    .lineLimit(1)
+                if copied {
+                    Text("Link copied")
+                        .font(Typeface.footnoteStrong)
+                        .foregroundStyle(p.accent)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                } else {
+                    Text(host)
+                        .font(Typeface.footnoteStrong)
+                        .foregroundStyle(p.text)
+                        .lineLimit(1)
+                    if unfurled, let path {
+                        Text(path)
+                            .font(Typeface.footnote)
+                            .foregroundStyle(p.textSecondary)
+                            .lineLimit(1)
+                            .padding(.leading, -5)
+                            .transition(.opacity)
+                    }
+                }
             }
             .padding(.vertical, Platform.isMac ? 5 : 7)
             .padding(.leading, 14)
@@ -203,6 +226,7 @@ struct URLPill: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerHelp("Search or command (⌘L)")
         .accessibilityLabel("Address, \(host)")
         .accessibilityHint("Opens the command bar")
 
@@ -231,6 +255,10 @@ struct URLPill: View {
         .padding(.vertical, 7)
         .contentShape(Capsule())
         .animation(Motion.spring(reduce: reduceMotion), value: canRead)
+        // A pointer passing over shouldn't set it off; one that rests does.
+        .animation(Motion.spring(reduce: reduceMotion).delay(unfurled ? 0.3 : 0), value: unfurled)
+        .animation(.easeOut(duration: 0.2), value: copied)
+        .onHover { hovering = $0 }
         .offset(y: lift)
         .simultaneousGesture(
             DragGesture(minimumDistance: 16)
@@ -256,7 +284,14 @@ struct URLPill: View {
         .contextMenu {
             Button("Reload", systemImage: "arrow.clockwise") { store.engine.reload(tab.id) }
             if let url {
-                Button("Copy link", systemImage: "link") { Clipboard.copy(url) }
+                Button("Copy link", systemImage: "link") {
+                    Clipboard.copy(url)
+                    copied = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.4))
+                        copied = false
+                    }
+                }
             }
         }
         .accessibilityElement(children: .contain)

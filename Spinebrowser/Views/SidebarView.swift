@@ -46,8 +46,10 @@ struct SidebarView: View {
             Spacer(minLength: 8)
             HStack(spacing: 8) {
                 ForEach(store.spaces) { other in
+                    let index = store.spaces.firstIndex { $0.id == other.id } ?? 9
                     SpaceDot(space: other, isActive: other.id == space.id, ground: space.binding.tint(p),
                              activeSize: SpineMetrics.spaceDot)
+                        .pointerHelp(index < 9 ? "\(other.name) (⌃\(index + 1))" : other.name)
                         .onTapGesture {
                             withAnimation(Motion.spring(reduce: reduceMotion)) { store.switchSpace(to: other.id) }
                         }
@@ -98,6 +100,7 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .pointerLift()
+                .pointerHelp(tab.displayTitle)
                 .accessibilityLabel(tab.displayTitle)
                 .tabDragSource(tab)
                 .contextMenu { TabMenu(tab: tab) }
@@ -194,6 +197,7 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .pointerLift()
+        .pointerHelp("Search or command (⌘L)")
     }
 }
 
@@ -284,6 +288,7 @@ struct ArchiveCountdown: View {
                     .padding(.vertical, 3)
                     .padding(.horizontal, 8)
                     .background(p.timeSoft, in: Capsule())
+                    .pointerHelp(Self.shelvesAt(date))
                     .accessibilityLabel("Next tab archives in \(Self.spoken(remaining))")
             }
         }
@@ -294,6 +299,14 @@ struct ArchiveCountdown: View {
         let h = minutes / 60
         let m = minutes % 60
         return h > 0 ? String(format: "%dh %02dm", h, m) : "\(m)m"
+    }
+
+    /// The clock time behind the countdown, for the pointer.
+    static func shelvesAt(_ date: Date) -> String {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if Calendar.current.isDateInToday(date) { return "The next tab shelves at \(time)" }
+        if Calendar.current.isDateInTomorrow(date) { return "The next tab shelves tomorrow at \(time)" }
+        return "The next tab shelves \(date.formatted(.dateTime.weekday(.wide))) at \(time)"
     }
 
     static func spoken(_ seconds: TimeInterval) -> String {
@@ -311,8 +324,11 @@ struct TabRow: View {
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var swipe: CGFloat = 0
+    /// Under the Mac's pointer the row offers its ×.
+    @State private var hovering = false
 
     var body: some View {
+        let showsClose = Platform.isMac && hovering
         let shownIn = store.paneIndex(showing: tab.id)
         let isActive = shownIn != nil
         let isFocused = shownIn == store.focusedPaneIndex
@@ -326,6 +342,8 @@ struct TabRow: View {
                     .foregroundStyle(p.text)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // The title gives way to the ×, so the two never overlap.
+                    .padding(.trailing, showsClose ? 20 : 0)
             }
             .padding(.vertical, SpineMetrics.rowVertical)
             .padding(.horizontal, SpineMetrics.rowInset)
@@ -345,6 +363,28 @@ struct TabRow: View {
         }
         .buttonStyle(.plain)
         .pointerLift()
+        .overlay(alignment: .trailing) {
+            if showsClose {
+                Button {
+                    withAnimation(Motion.spring(reduce: reduceMotion)) { store.close(tab.id) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(binding.secondary(p))
+                        .frame(width: 22, height: 22)
+                        .background(binding.ink(p).opacity(0.1), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 7)
+                .transition(.opacity)
+                .pointerHelp("Close tab (⌘W)")
+                .accessibilityLabel("Close \(tab.displayTitle)")
+            }
+        }
+        .onHover { over in
+            withAnimation(.easeOut(duration: 0.12)) { hovering = over }
+        }
         .offset(x: swipe)
         .opacity(1 - min(0.6, Double(-swipe) / 200))
         .simultaneousGesture(closeSwipe)
