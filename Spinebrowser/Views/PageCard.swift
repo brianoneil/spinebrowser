@@ -6,6 +6,8 @@ struct PageCard: View {
     let paneIndex: Int
     /// The card meets the Spine with square corners so the active spine joins the page.
     var joined = false
+    /// Paper to the window's edges: no corners of its own and no shadow. The window clips it.
+    var flush = false
 
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
@@ -25,7 +27,7 @@ struct PageCard: View {
         let space = store.space(id: pane.spaceID) ?? store.activeSpace
         let isPair = store.isPair
         let isFocused = store.focusedPaneIndex == paneIndex
-        let radius = Metrics.cardRadius
+        let radius: CGFloat = flush ? 0 : Metrics.cardRadius
         let shape = UnevenRoundedRectangle(
             topLeadingRadius: joined ? 0 : radius, bottomLeadingRadius: joined ? 0 : radius,
             bottomTrailingRadius: radius, topTrailingRadius: radius, style: .continuous
@@ -61,7 +63,8 @@ struct PageCard: View {
                 if let tab {
                     LoadingHairline(runtime: store.runtime[tab.id])
                 }
-                if !isPair, let tab, tab.url != nil {
+                // On the Mac the address lives in the bar.
+                if !isPair, !Platform.isMac, let tab, tab.url != nil {
                     AddressChrome(tab: tab)
                 }
             }
@@ -95,7 +98,7 @@ struct PageCard: View {
             }
         }
         .background {
-            if !p.isDark {
+            if !p.isDark, !flush {
                 shape.fill(p.page)
                     .shadow(color: Color(hex: 0x221D18, opacity: 0.06), radius: 1, y: 1)
                     .shadow(color: Color(hex: 0x221D18, opacity: 0.08), radius: 15, y: 10)
@@ -163,6 +166,8 @@ struct URLPill: View {
         // the finger is still over the pill, and the pill follows the finger, so drags veto it.
         let canRead = store.canRead(tab.id)
         let isReading = store.readerSession(for: tab.id) != nil
+        // The Mac's bar has its own Reader button beside the address.
+        let showsReader = canRead && !Platform.isMac
         HStack(spacing: 0) {
         Button {
             guard !isDragging, Date.now >= ignoreTapsUntil else { return }
@@ -192,9 +197,9 @@ struct URLPill: View {
                     .foregroundStyle(p.text)
                     .lineLimit(1)
             }
-            .padding(.vertical, 7)
+            .padding(.vertical, Platform.isMac ? 5 : 7)
             .padding(.leading, 14)
-            .padding(.trailing, canRead ? 6 : 14)
+            .padding(.trailing, showsReader ? 6 : 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -202,7 +207,7 @@ struct URLPill: View {
         .accessibilityHint("Opens the command bar")
 
             // Reader is offered only where Readability finds an article.
-            if canRead {
+            if showsReader {
                 Button {
                     withAnimation(Motion.spring(reduce: reduceMotion)) { store.toggleReader(tab.id) }
                 } label: {
@@ -230,10 +235,13 @@ struct URLPill: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 16)
                 .onChanged { value in
+                    // In the Mac's bar the address stays put.
+                    guard !Platform.isMac else { return }
                     isDragging = true
                     lift = min(0, value.translation.height)
                 }
                 .onEnded { value in
+                    guard !Platform.isMac else { return }
                     let spring = Motion.spring(reduce: reduceMotion)
                     if value.translation.height > 24 {
                         store.isCommandBarOpen = true

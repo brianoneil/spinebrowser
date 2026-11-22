@@ -19,11 +19,14 @@ struct PadToolbar: View {
     @Environment(\.palette) private var p
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let height: CGFloat = 44
+    /// Touch-sized on iPad; the Mac's pointer takes a smaller button.
+    static let height: CGFloat = Platform.isMac ? 36 : 44
     /// From the top of the window's safe area to the bar.
-    static let top: CGFloat = 6
+    static let top: CGFloat = Platform.isMac ? 10 : 6
     /// The band the bar takes above the page: its offset, its height and a gap.
-    static let band: CGFloat = 46
+    static let band: CGFloat = Platform.isMac ? 56 : 46
+    static let iconSize: CGFloat = Platform.isMac ? 14 : 17
+    static let gap: CGFloat = Platform.isMac ? 8 : 10
 
     var body: some View {
         let spring = Motion.spring(reduce: reduceMotion)
@@ -31,7 +34,7 @@ struct PadToolbar: View {
         let focusedID = store.focusedPane.tabID
         let canRead = store.canRead(focusedID)
         let isReading = store.readerSession(for: focusedID) != nil
-        HStack(spacing: 10) {
+        HStack(spacing: Self.gap) {
             GlassCircle(label: "Spine", symbol: "sidebar.left") {
                 withAnimation(spring) {
                     // A narrow window only has the overlay; the open layout cycles the Spine's widths.
@@ -52,6 +55,12 @@ struct PadToolbar: View {
 
             Spacer(minLength: 0)
 
+            // The Mac keeps the address in the bar. In the Pair each window's own bar names it.
+            if Platform.isMac, !store.isPair, let tab = store.focusedTab, tab.url != nil {
+                URLPill(tab: tab)
+                Spacer(minLength: 0)
+            }
+
             // Reader is offered only where Readability finds an article, as in the pill.
             if canRead {
                 GlassCircle(label: isReading ? "Hide Reader" : "Show Reader",
@@ -64,16 +73,18 @@ struct PadToolbar: View {
             if let url = store.focusedTab.flatMap({ store.currentURL(for: $0) }) {
                 ShareLink(item: url) {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: PadToolbar.iconSize, weight: .medium))
                         .foregroundStyle(p.text)
                         .frame(width: Self.height, height: Self.height)
                 }
+                // Without this the Mac draws its own bezel around the link and the button grows.
+                .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: Circle())
                 .accessibilityLabel("Share")
             } else {
                 // Nothing to share yet; the button stays put so the bar doesn't shift.
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: PadToolbar.iconSize, weight: .medium))
                     .foregroundStyle(p.textTertiary)
                     .frame(width: Self.height, height: Self.height)
                     .glassEffect(.regular, in: Circle())
@@ -91,7 +102,7 @@ struct PadToolbar: View {
                 withAnimation(spring) { _ = store.newTab() }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: Self.iconSize + 1, weight: .semibold))
                     .foregroundStyle(p.onAccent)
                     .frame(width: Self.height, height: Self.height)
             }
@@ -100,7 +111,7 @@ struct PadToolbar: View {
             .accessibilityLabel("New tab")
         }
         .padding(.leading, leading)
-        .padding(.trailing, 10)
+        .padding(.trailing, Platform.isMac ? 16 : 10)
         .frame(height: Self.height)
         .animation(spring, value: canRead)
     }
@@ -118,7 +129,7 @@ private struct GlassCircle: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: PadToolbar.iconSize, weight: .medium))
                 .foregroundStyle(isOn ? p.accent : p.text)
                 .frame(width: PadToolbar.height, height: PadToolbar.height)
         }
@@ -139,9 +150,9 @@ private struct BarIcon: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: PadToolbar.iconSize, weight: .medium))
                 .foregroundStyle(isEnabled ? p.text : p.textTertiary)
-                .frame(width: 44, height: PadToolbar.height)
+                .frame(width: PadToolbar.height, height: PadToolbar.height)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

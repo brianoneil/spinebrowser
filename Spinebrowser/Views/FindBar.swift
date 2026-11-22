@@ -49,7 +49,7 @@ struct FindBar: View {
         .shadow(color: Color(hex: 0x221D18, opacity: p.isDark ? 0 : 0.15), radius: 10, y: 6)
         .onAppear { isFocused = true }
         .onExitCommand { store.isFindOpen = false }
-        .padding(.top, 92)
+        .padding(.top, PadToolbar.band + 8)
         .padding(.trailing, 18)
     }
 }

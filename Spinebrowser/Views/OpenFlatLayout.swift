@@ -29,10 +29,14 @@ struct OpenFlatLayout: View {
             // iPad: the cloth runs under the status bar and the window controls; the page sits
             // below the app's own bar. The Duo's system column needs none of this.
             let ownBar = Platform.drawsOwnToolbar
+            // The Mac's bar sits in the hidden title bar's row, so that inset isn't added again.
+            let top: CGFloat = Platform.isMac ? 0 : insets.top
+            // Mac: one page is paper to the window's edges. The Pair keeps its two cards.
+            let flush = Platform.isMac && !showsPair
             let corner = geo.containerCornerInsets.topLeading
             // Under the window controls the Space header sits a row below them, not a full corner below.
             let spineTop: CGFloat = Platform.isMac ? 28
-                : (ownBar ? max(insets.top + PadToolbar.top, corner.height - 16) : 0)
+                : (ownBar ? max(top + PadToolbar.top, corner.height - 16) : 0)
             // Bent with an article open, Reader takes the whole display: a book when the crease runs
             // down the middle, a page above a console when it runs across.
             let crease = Self.activeCrease(in: geo)
@@ -59,10 +63,13 @@ struct OpenFlatLayout: View {
                         showsPair: showsPair,
                         isOpenDisplay: isOpenDisplay,
                         isBent: Self.isBent(in: geo),
-                        creaseX: hasFold ? Self.creaseX(in: geo) : nil
+                        creaseX: hasFold ? Self.creaseX(in: geo) : nil,
+                        flush: flush
                     )
-                    .padding(.top, ownBar ? insets.top + PadToolbar.band : 0)
-                    .padding(.bottom, ownBar ? 14 : 0)
+                    .padding(.top, ownBar ? top + PadToolbar.band : 0)
+                    .padding(.bottom, ownBar && !Platform.isMac ? 14 : 0)
+                    // The bar's buttons sit on the paper.
+                    .background(flush ? p.page : .clear)
                 }
                 .padding(.trailing, insets.trailing)
                 // Upright, the system bar runs across the top and owns taps there. Flat it's 0.
@@ -70,10 +77,11 @@ struct OpenFlatLayout: View {
 
                 if ownBar {
                     PadToolbar(
-                        leading: max(spineWidth + 10, corner.width + 8),
+                        // On the Mac the bar starts clear of the traffic lights.
+                        leading: Platform.isMac ? max(spineWidth + 16, 100) : max(spineWidth + 10, corner.width + 8),
                         showsPair: isOpenDisplay
                     )
-                    .padding(.top, insets.top + PadToolbar.top)
+                    .padding(.top, top + PadToolbar.top)
                 }
 
                 edgeHandle(state: state, resting: resting, spineWidth: spineWidth, canResize: isOpenDisplay && !store.isPair)
@@ -231,6 +239,8 @@ private struct PageArea: View {
     /// The crease's x in the layout's coordinate space. Nil without a fold: the middle of the page
     /// row stands in for it.
     let creaseX: CGFloat?
+    /// The page runs to the window's edges, with no card around it.
+    var flush = false
 
     @Environment(BrowserStore.self) private var store
     /// The divider's position while a finger moves it. The store only hears where it comes to rest.
@@ -251,7 +261,9 @@ private struct PageArea: View {
                     single(width: geo.size.width, foldX: foldX)
                 }
             }
-            .padding(.vertical, 10)
+            // The Mac's bar already gives the Pair its gap above.
+            .padding(.top, flush || Platform.isMac ? 0 : 10)
+            .padding(.bottom, flush ? 0 : (Platform.isMac ? 8 : 10))
         }
     }
 
@@ -289,9 +301,10 @@ private struct PageArea: View {
     // MARK: One page
 
     private func single(width: CGFloat, foldX crease: CGFloat?) -> some View {
-        let lead: CGFloat = joined ? 0 : 10
-        let foldX = crease ?? (lead + width - Self.trailing) / 2
-        return PageCard(paneIndex: store.focusedPaneIndex, joined: joined)
+        let lead: CGFloat = joined || flush ? 0 : 10
+        let trailing: CGFloat = flush ? 0 : Self.trailing
+        let foldX = crease ?? (lead + width - trailing) / 2
+        return PageCard(paneIndex: store.focusedPaneIndex, joined: joined, flush: flush)
             .overlay(alignment: .leading) {
                 // A tab carried over the page can start a Pair on either side of the fold.
                 if isOpenDisplay, case let .tab(tabID) = store.drag, store.focusedPane.tabID != tabID {
@@ -316,6 +329,6 @@ private struct PageArea: View {
                 }
             }
             .padding(.leading, lead)
-            .padding(.trailing, Self.trailing)
+            .padding(.trailing, trailing)
     }
 }
