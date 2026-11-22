@@ -19,7 +19,7 @@ That leaves three jobs for us:
 | `Extensions/ChromeWebStore.swift` | Reads an extension id from a store address, builds the download address, unwraps CRX2 and CRX3. |
 | `Extensions/ExtensionStore.swift` | Owns the one `WKWebExtensionController`. Installs, loads, switches off and removes extensions. Is the controller's delegate. |
 | `Extensions/ExtensionBridge.swift` | `ExtensionTab` and `ExtensionWindow`, what WebKit sees of ours. Presents popups. |
-| `Views/ExtensionsMenu.swift` | The puzzle piece in the address pill. |
+| `Views/ExtensionsMenu.swift` | The puzzle piece: in the address pill on the Duo, a button in the bar on iPad and Mac. |
 | `Views/SettingsView.swift` | The Extensions section. |
 
 Every page shares one `WKWebViewConfiguration`, and that configuration now carries the controller. That's the whole hook for content scripts: WebKit injects them into any page it knows about. An extension's own pages (options, a welcome page) need that extension's configuration, so `WebEngine` picks it when a tab's address belongs to an extension.
@@ -31,7 +31,7 @@ Archives live in `Application Support/Extensions/<id>.zip`, beside `installed.js
 ## Using it
 
 - Open an extension's page on the Chrome Web Store. The store's own button, dead anywhere that isn't Chrome, reads **Add to Spine** and works. A script on the store page wakes it and hands the click to the browser. It matches the English label, so other languages fall back to the next way in.
-- Or use the puzzle piece in the address, which turns verdigris on a store page. Tap it, then **Add this extension**.
+- Or use the puzzle piece, which turns verdigris on a store page. On the Duo it sits in the address pill. On iPad and Mac it's a button in the bar, because the Mac's address grows under the pointer and a button that slides is a bad place to hang a popup. Tap it, then **Add this extension**.
 - With extensions running, the puzzle piece lists them, badge and all. Tap one for its popup: a sheet on the Duo's cover, a popover from the button on iPad and Mac.
 - Settings ▸ Extensions switches each one on or off. Touch and hold to remove; right-click on the Mac.
 
@@ -55,7 +55,7 @@ With Dark Reader, installed from the store through the puzzle piece:
 
 On the iPad simulator, with both: content scripts run, storage holds across a relaunch, the menu lists both, and Dark Reader's popup opens as a popover from the puzzle piece.
 
-On the Mac, through debug probes, because this machine can't record its screen: Dark Reader installs from the store, survives a relaunch, darkens Wikipedia, shows its button, and its popover opens at full size. The puzzle piece sits in the bar beside the address. Nobody has clicked through the Mac's menu or the install prompt by hand yet.
+On the Mac, through debug probes, because this machine can't record its screen: Dark Reader installs from the store, survives a relaunch, darkens Wikipedia, shows its button, and its popover opens at full size. The puzzle piece sits in the bar beside the address. Real mouse clicks sent into the popover reach its page.
 
 To install without the UI, launch a debug build with `-SPINE_INSTALL_EXTENSION <id or path to a zip>`. Ids and paths can be comma-separated. On the Mac it's an environment variable of the same name, and the sandbox only reads paths inside the app's container. Two more, Mac-minded: `SPINE_EXTENSION_PROBE` runs JavaScript in the page in front and logs the answer, and `SPINE_PRESS_EXTENSION` presses an extension's button and logs whether its popup showed.
 

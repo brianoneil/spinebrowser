@@ -356,6 +356,17 @@ final class ExtensionStore: NSObject {
             let popover = contexts[id]?.action(for: tab(for: tabID))?.popupPopover
             log.notice("Probe popup: shown \(popover?.isShown ?? false), size \(String(describing: popover?.contentSize), privacy: .public)")
             DebugSnapshot.captureNow()
+            // Where the popup is on screen, then whether a real click inside it reaches its page.
+            let action = contexts[id]?.action(for: tab(for: tabID))
+            let frame = popover?.contentViewController?.view.window?.frame ?? .zero
+            let screen = NSScreen.screens.first?.frame.height ?? 0
+            log.notice("Probe popup frame: \(Int(frame.minX)) \(Int(screen - frame.maxY)) \(Int(frame.width)) \(Int(frame.height))")
+            _ = try? await action?.popupWebView?.evaluateJavaScript(
+                "window.__spineClicks = []; addEventListener('click', function (e) { window.__spineClicks.push(e.target.tagName + ':' + (e.target.textContent || '').trim().slice(0, 24)); }, true); 1"
+            )
+            try? await Task.sleep(for: .seconds(12))
+            let clicks = try? await action?.popupWebView?.evaluateJavaScript("JSON.stringify(window.__spineClicks) + ' shown'")
+            log.notice("Probe popup clicks: \(String(describing: clicks), privacy: .public), still shown \(popover?.isShown ?? false)")
             #endif
         }
     }

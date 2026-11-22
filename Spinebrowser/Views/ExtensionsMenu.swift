@@ -3,7 +3,19 @@ import SwiftUI
 /// The puzzle piece in the address pill. It lists the extensions that are running, and on a
 /// Chrome Web Store page it offers to add the one on show. With neither, it isn't there.
 struct ExtensionsMenu: View {
+    /// Whether a tab has anything to show here: an extension running, or one on offer.
+    @MainActor
+    static func hasSomething(for tab: BrowserTab?, in store: BrowserStore) -> Bool {
+        guard let tab else { return false }
+        let extensions = store.library.extensions
+        if !extensions.buttons(for: tab.id).isEmpty { return true }
+        return ChromeWebStore.extensionID(in: store.currentURL(for: tab)).map { !extensions.isInstalled($0) } ?? false
+    }
+
     let tab: BrowserTab
+    /// In the iPad's and the Mac's bar it's a glass circle like its neighbours, and it stays put.
+    /// In the Duo's pill it's a small mark beside Reader.
+    var inBar = false
     @Environment(BrowserStore.self) private var store
     @Environment(\.palette) private var p
     @State private var candidate: ExtensionCandidate?
@@ -47,18 +59,20 @@ struct ExtensionsMenu: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: offered != nil ? "puzzlepiece.extension.fill" : "puzzlepiece.extension")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(offered != nil ? p.accent : p.textSecondary)
+                            .font(.system(size: inBar ? PadToolbar.iconSize : 12, weight: inBar ? .medium : .semibold))
+                            .foregroundStyle(offered != nil ? p.accent : inBar ? p.text : p.textSecondary)
                     }
                 }
-                // The Mac's bar is shorter, and the button mustn't make the address taller.
-                .frame(width: 30, height: Platform.isMac ? 25 : 30)
+                .frame(width: inBar ? PadToolbar.height : 30, height: inBar ? PadToolbar.height : 30)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .modifier(BarGlass(isOn: inBar))
             // Where the button sits in its window, so a popup can open from it.
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
-            .padding(.trailing, 4)
+            .padding(.trailing, inBar ? 0 : 4)
+            .pointerHelp("Extensions")
             .accessibilityLabel("Extensions")
             // The store page's own button was pressed in this tab.
             .onChange(of: extensions.wanted) { _, wanted in
@@ -93,6 +107,19 @@ struct ExtensionsMenu: View {
                 didFail = true
             }
             isFetching = false
+        }
+    }
+}
+
+/// The glass circle the bar's buttons sit on.
+private struct BarGlass: ViewModifier {
+    let isOn: Bool
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            content
         }
     }
 }

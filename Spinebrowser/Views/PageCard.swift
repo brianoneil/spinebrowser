@@ -246,7 +246,8 @@ struct URLPill: View {
                 .accessibilityLabel(isReading ? "Hide Reader" : "Show Reader")
                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
-            ExtensionsMenu(tab: tab)
+            // The iPad and the Mac keep extensions in their bar, where the button doesn't move.
+            if !Platform.drawsOwnToolbar { ExtensionsMenu(tab: tab) }
         }
         .background(p.raised, in: Capsule())
         .overlay {

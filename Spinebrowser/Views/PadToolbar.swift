@@ -36,8 +36,10 @@ struct PadToolbar: View {
         let isReading = store.readerSession(for: focusedID) != nil
         // On the Mac both button groups take the same width, so the address between them sits on
         // the page's centre. The wider group sets it: four buttons, or three in a narrow window.
+        let hasExtensions = ExtensionsMenu.hasSomething(for: store.focusedTab, in: store)
+        let buttons: CGFloat = (showsPair ? 4 : 3) + (hasExtensions ? 1 : 0)
         let side: CGFloat? = Platform.isMac
-            ? Self.height * (showsPair ? 4 : 3) + Self.gap * (showsPair ? 3 : 2)
+            ? Self.height * buttons + Self.gap * (buttons - 1)
             : nil
         HStack(spacing: Self.gap) {
             HStack(spacing: Self.gap) {
@@ -79,6 +81,9 @@ struct PadToolbar: View {
                     withAnimation(spring) { store.toggleReader(focusedID) }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+            if hasExtensions, let tab = store.focusedTab {
+                ExtensionsMenu(tab: tab, inBar: true)
             }
             if let url = store.focusedTab.flatMap({ store.currentURL(for: $0) }) {
                 ShareLink(item: url) {
